@@ -10,6 +10,6 @@ setup(
   author = "Jernej Kos",
   author_email = "k@jst.sm",
   description = "Itsy, the Object-Document Mapper with a twist.",
-  license = "GPL3",
+  license = "BSD",
   keywords = "mongodb elasticsearch odm mapper"
 )
