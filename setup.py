@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
   name = "Itsy",
   version = "0.1",
-  packages = ["itsy"],
+  packages = find_packages(),
 # TODO dependencies
 #  install_requires = [""],
 

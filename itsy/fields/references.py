@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 from .. import references
 from ..document import Document, EmbeddedDocument, RESTRICT, CASCADE
-from ..fields import Field
+from .base import Field
 
 # Exported classes
 __all__ = [
