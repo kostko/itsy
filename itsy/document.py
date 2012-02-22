@@ -7,7 +7,7 @@ import pymongo
 
 from django.core.exceptions import ImproperlyConfigured
 
-from . import exceptions, signals
+from . import exceptions, signals, registry
 from . import tasks as common_tasks
 from .connection import store, search
 from .resultset import DbResultSet, SearchResultSet
@@ -135,10 +135,6 @@ class DocumentMetadata(object):
       # Process reverse references
       field.setup_reverse_references(field.cls, field.name)
 
-      # If field changes the search schema, we have to emit new mappings
-      if field.searchable:
-        self.emit_search_mappings()
-
   def search_mapping_prepare(self):
     """
     Prepares the field mappings for Elastic Search.
@@ -250,6 +246,11 @@ class MetaDocument(type):
         _meta.collection.ensure_index(db_index_spec)
     
     signals.document_prepared.send(sender = new_class)
+
+    # Register the class in the document registry
+    if not _meta.abstract:
+      registry.document_registry.register(new_class)
+
     return new_class
 
 class MetaEmbeddedDocument(type):
