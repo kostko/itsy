@@ -37,7 +37,7 @@ class Command(management_base.BaseCommand):
 
     if options.get("recreate-index"):
       # Drop the index and recreate it
-      self.stdout.write("Recreating index...")
+      self.stdout.write("Recreating index...\n")
       document_class._meta.search_engine.drop()
       document_class._meta.emit_search_mappings()
 
