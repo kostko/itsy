@@ -35,6 +35,9 @@ class Command(management_base.BaseCommand):
     if not issubclass(document_class, itsy_document.Document):
       raise management_base.CommandError("Specified class is not a valid Document!")
 
+    if not document_class._meta.searchable or document_class._meta.abstract or document_class._meta.embedded:
+      raise management_base.CommandError("Specified document is not searchable!")
+
     if options.get("recreate-index"):
       # Drop the index and recreate it
       self.stdout.write("Recreating index...\n")
