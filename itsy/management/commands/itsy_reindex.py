@@ -52,4 +52,10 @@ class Command(management_base.BaseCommand):
       self.stdout.write("Reindex of %s has been initiated in the background.\n" % class_path)
     else:
       self.stdout.write("Performing foreground reindex of %s...\n" % class_path)
-      itsy_tasks.search_index_reindex(document_class)
+
+      for no, document in enumerate(document_class.find().order_by("pk")):
+        document.save(target = itsy_document.DocumentSource.Search)
+        if (no + 1) % 1000 == 0:
+          self.stdout.write("Indexed %d documents.\n" % (no + 1))
+
+      self.stdout.write("Reindex done.\n")
