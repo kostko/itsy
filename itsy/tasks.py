@@ -68,3 +68,19 @@ def search_index_remove(document):
   except Exception, e:
     search_index_remove.retry(exc = e)
 
+@celery_task()
+def search_index_reindex(document_cls, offset = 0):
+  """
+  Performs a complete reindex of documents in the database.
+
+  @param document_cls: Document class to reindex
+  @param offset: Document offset
+  """
+  from .document import DocumentSource
+
+  for document in document_cls.find().order_by("pk").skip(offset):
+    try:
+      # Reindex the document
+      document.save(target = DocumentSource.Search)
+    except:
+      pass

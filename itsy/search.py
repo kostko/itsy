@@ -35,6 +35,12 @@ class DocumentSearchIndex(object):
     Deletes a document from the index.
     """
     self._es.delete(self._index, self._type, doc_id)
+
+  def drop(self):
+    """
+    Drops the index and removes all data.
+    """
+    self._es.delete_index_if_exists(self._index)
   
   def search(self, query, **kwargs):
     """

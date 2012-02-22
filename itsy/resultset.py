@@ -1,5 +1,7 @@
 from __future__ import absolute_import
 
+import pymongo
+
 class DbResultSet(object):
   """
   Wrapper for lazy evaluation of MongoDB result sets.
@@ -75,6 +77,9 @@ class DbResultSet(object):
     
     @param limit: Number of entries to limit to
     """
+    if limit is None:
+      return self
+
     self.query = self.query.limit(limit)
     self._has_limit = True
     return self
@@ -95,7 +100,7 @@ class DbResultSet(object):
     """
     return self.query.count(with_limit_and_skip = True)
   
-  def _parse_order_spec(spec):
+  def _parse_order_spec(self, spec):
     """
     Converts string-based sort order specification into one that
     can be used directly by pymongo.
@@ -126,7 +131,7 @@ class DbResultSet(object):
     """
     Clones this result set and returns it.
     """
-    rs = ResultSet(self.model, self.spec, self.query.clone())
+    rs = DbResultSet(self.model, self.spec, self.query.clone())
     rs._has_limit = self._has_limit
     rs._has_skip = self._has_skip
     return rs
