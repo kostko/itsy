@@ -208,7 +208,7 @@ class ReverseCachedReferenceDescriptor(Field):
     """
     if self.searchable_fields is None:
       return
-    
+
     value = []
     for rel_doc in self.__get__(document, type(document)):
       doc = {}
