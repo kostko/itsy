@@ -857,3 +857,43 @@ class DictField(Field):
       enabled = self.searchable,
     ))
     return mapping
+
+class DynamicField(Field):
+  """
+  Dynamic field is a field whose value gets computed when saving a document
+  based on some function that gets passed the document as an argument.
+  """
+  def __init__(self, subfield, function, on_change = None, **kwargs):
+    """
+    Class constructor.
+
+    @param subfield: Subfield class
+    @param function: Function that computes the value of the field
+    @param on_change: Only recompute the field when certain other fields change
+    """
+    if not callable(function):
+      raise TypeError("Function must be a callable object!")
+    elif not issubclass(subfield, Field):
+      raise TypeError("Subfield must be a Field subclass!")
+
+    self.subfield = subfield(**kwargs)
+    self.function = function
+    self.on_change = on_change
+    super(DynamicField, self).__init__(**kwargs)
+
+  def pre_save(self, value, document):
+    if self.on_change is not None:
+      # TODO
+      pass
+
+    return self.function(document)
+
+  def to_store(self, value, document):
+    return self.subfield.to_store(value, document)
+
+  from_store = to_store
+  to_search = to_store
+  from_search = to_store
+
+  def get_search_mapping(self):
+    return self.subfield.get_search_mapping()
