@@ -1,4 +1,5 @@
 import optparse
+import traceback
 
 from django.core.management import base as management_base
 from django.utils import importlib
@@ -54,7 +55,12 @@ class Command(management_base.BaseCommand):
       self.stdout.write("Performing foreground reindex of %s...\n" % class_path)
 
       for no, document in enumerate(document_class.find().order_by("pk")):
-        document.save(target = itsy_document.DocumentSource.Search)
+        try:
+          document.save(target = itsy_document.DocumentSource.Search)
+        except:
+          # Print the exception and continue reindexing
+          traceback.print_exc()
+
         if (no + 1) % 1000 == 0:
           self.stdout.write("Indexed %d documents.\n" % (no + 1))
 
