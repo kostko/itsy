@@ -71,13 +71,20 @@ def search_index_remove(document):
     search_index_remove.retry(exc = e)
 
 @celery_task()
-def search_index_reindex(document_cls, offset = 0):
+def search_index_reindex(document_cls, offset = 0, batch_size = 1000):
   """
   Performs a complete reindex of documents in the database.
 
   @param document_cls: Document class to reindex
-  @param offset: Document offset
+  @param offset: Starting document offset
   """
-  for document in document_cls.find().order_by("pk").skip(offset):
-    search_index_update.delay(document)
-    time.sleep(0.1)
+  while True:
+    count = 0
+    for document in document_cls.find().order_by("pk").skip(offset).limit(batch_size):
+      search_index_update.delay(document)
+      count += 1
+      time.sleep(0.1)
+
+    offset += batch_size
+    if count < batch_size:
+      break
