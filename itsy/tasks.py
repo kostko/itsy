@@ -1,3 +1,5 @@
+import time
+
 from celery.task import task as celery_task
 
 @celery_task(max_retries = 3)
@@ -76,11 +78,6 @@ def search_index_reindex(document_cls, offset = 0):
   @param document_cls: Document class to reindex
   @param offset: Document offset
   """
-  from .document import DocumentSource
-
   for document in document_cls.find().order_by("pk").skip(offset):
-    try:
-      # Reindex the document
-      document.save(target = DocumentSource.Search)
-    except:
-      pass
+    search_index_update.delay(document)
+    time.sleep(0.1)
