@@ -808,3 +808,38 @@ class SearchCompositeField(Field):
       mapping["search_analyzer"] = self.search_index["search_analyzer"]
 
     return mapping
+
+class DictField(Field):
+  """
+  Similar to an embedded field but without type checks, allowing any
+  serializable structure.
+  """
+  def __init__(self, **kwargs):
+    """
+    Class constructor.
+    """
+    if "default" not in kwargs:
+      kwargs["default"] = lambda: {}
+    super(DictField, self).__init__(**kwargs)
+
+  def from_store(self, value, document):
+    """
+    Converts value from MongoDB store.
+    """
+    return dict(value)
+
+  to_store = from_store
+  from_search = from_store
+  to_search = from_store
+
+  def get_search_mapping(self):
+    """
+    Returns field mapping for Elastic Search.
+    """
+    mapping = super(DictField, self).get_search_mapping()
+    mapping.update(dict(
+      type = "object",
+      dynamic = True,
+      enabled = self.searchable,
+    ))
+    return mapping
