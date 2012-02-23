@@ -1,13 +1,18 @@
 from __future__ import absolute_import
 
+import copy
+
 from .. import references
-from ..document import Document, EmbeddedDocument, RESTRICT, CASCADE
+from ..document import Document, EmbeddedDocument, FieldMetadata, RESTRICT, CASCADE
 from .base import Field
 
-# Exported classes
 __all__ = [
   "CachedReferenceField",
 ]
+
+# TODO cached references should be rewritten to be EmbeddedDocument subclasses; this
+#      will enable easy support for type-validation; dynamic fields should be added
+#      to base fields using pre_save
 
 class CachedField(object):
   def __init__(self, name, value):
@@ -210,7 +215,7 @@ class ReverseCachedReferenceDescriptor(Field):
       return
 
     value = []
-    for rel_doc in self.__get__(document, type(document)):
+    for rel_doc in self.__get__(document, type(document)).only(*self.searchable_fields):
       doc = {}
       for field in self.searchable_fields:
         fval = reduce(getattr, field.split('.'), rel_doc)
@@ -222,7 +227,7 @@ class ReverseCachedReferenceDescriptor(Field):
         doc[field.replace('.', '_')] = fval
       
       value.append(doc)
-    
+
     return value
 
   def get_search_mapping(self):
@@ -237,6 +242,9 @@ class ReverseCachedReferenceDescriptor(Field):
       enabled = self.searchable
     ))
     return mapping
+
+class CachedReferenceFieldMetadata(FieldMetadata):
+  pass
 
 class CachedReferenceField(Field):
   """
@@ -266,6 +274,7 @@ class CachedReferenceField(Field):
     self.related_searchable = related_searchable
     self.no_id_index = no_id_index
     self.on_delete = on_delete
+    self.field_metadata = CachedReferenceFieldMetadata()
     
     # Calculate dependent fields
     self.dependencies = set()
@@ -287,6 +296,13 @@ class CachedReferenceField(Field):
       return {}
     else:
       return { 'id' : Document.ASCENDING }
+
+  def get_subfield_metadata(self):
+    """
+    If this field has any subfields that have type metadata in the form
+    of Field instances, it should be returned here.
+    """
+    return self.field_metadata
   
   def setup_reverse_references(self, document_class, field_name):
     """
@@ -344,11 +360,20 @@ class CachedReferenceField(Field):
                 raise TypeError("Dynamic field '{0}' requires the reference document class '{1}' to inherit '{2}'!".format(
                   field.alias, document.__name__, cls.__name__
                 ))
+
+            # TODO Setup field metadata
           else:
-            document._meta.get_field_by_name(field)
+            # Setup field metadata
+            self.field_metadata.add_field(document._meta.get_field_by_name(field))
         except KeyError:
           raise KeyError("Cached field '{0}' does not exist on document '{1}' for cached reference '{2}'!".format(
             field, document.__name__, self.name))
+
+      # Add "id" field to local metadata
+      pk_field = copy.deepcopy(document._meta.get_field_by_name("pk"))
+      pk_field.name = "id"
+      pk_field.db_name = "id"
+      self.field_metadata.add_field(pk_field)
     
     references.track(self, self.document, reference_resolved)
   

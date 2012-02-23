@@ -29,7 +29,87 @@ class DocumentSource:
   Db = 1
   Search = 2
 
-class DocumentMetadata(object):
+class FieldMetadata(object):
+  """
+  This class contains field metadata.
+  """
+  # Field descriptors
+  fields = None
+  db_fields = None
+
+  def __init__(self):
+    """
+    Class constructor.
+    """
+    self.fields = {}
+    self.db_fields = {}
+
+  def get_field_by_name(self, name):
+    """
+    Returns a field instance identified by its name.
+
+    @param name: Field's name
+    @return: Field instance
+    """
+    return self.fields[name]
+
+  def get_field_by_db_name(self, db_name):
+    """
+    Returns a field instance identified by its database name.
+
+    @param name: Field's database name
+    @return: Field instance or None
+    """
+    return self.db_fields.get(db_name, None)
+
+  def add_field(self, field):
+    """
+    Adds a new field for this document.
+    """
+    # TODO this should use ordered dictionary
+    self.fields[field.name] = field
+    self.db_fields[field.db_name] = field
+
+  def field_from_data(self, name, data):
+    """
+    Extracts a field from database data.
+
+    @param name: Field's name
+    @param data: Database data dictionary
+    @return: Extracted field value or None
+    """
+    return data.get(self.get_field_by_name(name).db_name)
+
+  def field_to_data(self, name, value, data):
+    """
+    Sets a field in database dictionary data.
+
+    @param name: Field's name
+    @param value: Field's value
+    @param data: Data dictionary
+    """
+    data[self.get_field_by_name(name).db_name] = value
+
+  def resolve_subfield_hierarchy(self, field_elements):
+    """
+    Resolves Itsy field hierarchy into a database field hierarchy.
+
+    @param field_elements: Ordered Itsy field names
+    @return: Ordered database field names
+    """
+    db_field = []
+    subfields = self
+    for element in field_elements:
+      if subfields is not None:
+        field = subfields.get_field_by_name(element)
+        db_field.append(field.db_name)
+        subfields = field.get_subfield_metadata()
+      else:
+        db_field.append(element)
+
+    return db_field
+
+class DocumentMetadata(FieldMetadata):
   """
   This class contains document metadata. 
   """
@@ -39,9 +119,6 @@ class DocumentMetadata(object):
   
   # Search
   search_engine = None
-  
-  # Field descriptors
-  fields = None
   
   # Reverse references
   reverse_references = None
@@ -53,6 +130,7 @@ class DocumentMetadata(object):
     """
     Class constructor.
     """
+    super(DocumentMetadata, self).__init__()
     self.embedded = embedded
     self.update_tasks = []
     
@@ -66,8 +144,6 @@ class DocumentMetadata(object):
       self.abstract = False
     
     self.field_list = []
-    self.fields = {}
-    self.db_fields = {}
     self.reverse_references = []
     
     if not self.abstract and not self.embedded:
@@ -78,52 +154,12 @@ class DocumentMetadata(object):
       self.revisions = store.collection("{0}.revisions".format(self.collection_base))
       self.search_engine = search.index(self.collection_base, self.classname.lower())
   
-  def get_field_by_name(self, name):
-    """
-    Returns a field instance identified by its name.
-    
-    @param name: Field's name
-    @return: Field instance
-    """
-    return self.fields[name]
-  
-  def get_field_by_db_name(self, db_name):
-    """
-    Returns a field instance identified by its database name.
-    
-    @param name: Field's database name
-    @return: Field instance or None
-    """
-    return self.db_fields.get(db_name, None)
-  
-  def field_from_data(self, name, data):
-    """
-    Extracts a field from database data.
-    
-    @param name: Field's name
-    @param data: Database data dictionary
-    @return: Extracted field value or None
-    """
-    return data.get(self.get_field_by_name(name).db_name)
-  
-  def field_to_data(self, name, value, data):
-    """
-    Sets a field in database dictionary data.
-    
-    @param name: Field's name
-    @param value: Field's value
-    @param data: Data dictionary
-    """
-    data[self.get_field_by_name(name).db_name] = value
-  
   def add_field(self, field):
     """
     Adds a new field for this document.
     """
-    # TODO this should use ordered dictionary
-    self.fields[field.name] = field
-    self.db_fields[field.db_name] = field
-    
+    super(DocumentMetadata, self).add_field(field)
+
     if not self.embedded and not self.abstract:
       # Process index for this field
       for ifield, order in field.get_indices().iteritems():
@@ -223,26 +259,9 @@ class MetaDocument(type):
             field_path = field_path[1:]
           else:
             order = Document.ASCENDING
-          
-          # Process fields through embedded document hierarchy
-          rkey = []
-          document = new_class
-          for element in field_path.split('.'):
-            if document is not None:
-              field = document._meta.get_field_by_name(element)
-              rkey.append(field.db_name)
-              
-              if isinstance(field, db_fields.EmbeddedDocumentField):
-                document = field.embedded
-              else:
-                # We have crossed a non-embedded field so the structure from here
-                # on is undefined and database-dependent
-                document = None
-            else:
-              rkey.append(element)
-          
-          db_index_spec.append((".".join(rkey), order))
-        
+
+          db_index_spec.append((".".join(_meta.resolve_subfield_hierarchy(field_path.split("."))), order))
+
         _meta.collection.ensure_index(db_index_spec)
     
     signals.document_prepared.send(sender = new_class)

@@ -173,6 +173,13 @@ class Field(object):
     else:
       return {}
 
+  def get_subfield_metadata(self):
+    """
+    If this field has any subfields that have type metadata in the form
+    of Field instances, it should be returned here.
+    """
+    return None
+
   def get_search_mapping(self):
     """
     This method may return a dictionary describing the mapping for
@@ -560,7 +567,14 @@ class EmbeddedDocumentField(Field):
           indices['{0}.{1}'.format(subfield.db_name, ifield)] = order
     
     return indices
-  
+
+  def get_subfield_metadata(self):
+    """
+    If this field has any subfields that have type metadata in the form
+    of Field instances, it should be returned here.
+    """
+    return self.embedded._meta
+
   def setup_reverse_references(self, document_class, field_name):
     """
     This method may recursively setup reverse references.

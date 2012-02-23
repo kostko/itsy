@@ -8,6 +8,7 @@ class DbResultSet(object):
   """
   _has_limit = False
   _has_skip = False
+  _only_fields = None
   
   def __init__(self, document, spec, cursor = None):
     """
@@ -18,6 +19,7 @@ class DbResultSet(object):
     @param cursor: Optional existing cursor
     """
     self.document = document
+    self._only_fields = set()
     
     if cursor is not None:
       self.spec = spec
@@ -38,18 +40,12 @@ class DbResultSet(object):
       if len(elements) > 1:
         # Process fields through embedded document hierarchy
         rkey = []
-        document = self.document
+        subfields = self.document._meta
         for element in elements[:-1]:
-          if document is not None:
-            field = document._meta.get_field_by_name(element)
+          if subfields is not None:
+            field = subfields.get_field_by_name(element)
             rkey.append(field.db_name)
-            
-            if isinstance(field, db_fields.EmbeddedDocumentField):
-              document = field.embedded
-            else:
-              # We have crossed a non-embedded field so the structure from here
-              # on is undefined and database-dependent
-              document = None
+            subfields = field.get_subfield_metadata()
           else:
             rkey.append(element)
         
@@ -63,14 +59,14 @@ class DbResultSet(object):
           new_spec[rkey] = { "$in" : value }
         else:
           # Not a known modifier, treat as a normal field
-          if document is not None:
-            modifier = document._meta.get_field_by_name(modifier).db_name
+          if subfields is not None:
+            modifier = subfields.get_field_by_name(modifier).db_name
           new_spec["{0}.{1}".format(rkey, modifier)] = value
       else:
         self.document._meta.field_to_data(key, value, new_spec)
     
     return new_spec
-  
+
   def limit(self, limit):
     """
     Limits this result set to some amount of entries.
@@ -134,6 +130,7 @@ class DbResultSet(object):
     rs = DbResultSet(self.model, self.spec, self.query.clone())
     rs._has_limit = self._has_limit
     rs._has_skip = self._has_skip
+    rs._only_fields = self._only_fields
     return rs
   
   def one(self):
@@ -144,7 +141,22 @@ class DbResultSet(object):
       return self[0]
     except IndexError:
       raise self.document.DoesNotExist
-  
+
+  def only(self, *fields):
+    """
+    Selects a subset of fields to be fetched.
+    """
+    for field in fields:
+      path = ".".join(self.document._meta.resolve_subfield_hierarchy(field.split(".")))
+      self._only_fields.add(path)
+      if self.query._Cursor__fields is None:
+        # Identifier and version fields must always be included
+        self.query._Cursor__fields = { "_id" : 1, "_version" : 1 }
+
+      self.query._Cursor__fields.update({ path : 1 })
+
+    return self
+
   def ids(self):
     """
     Limits the result to only return identifiers instead of documents.
