@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import copy
 
+from . import base as fields_base
 from .. import references
 from ..document import Document, EmbeddedDocument, FieldMetadata, RESTRICT, CASCADE
 from .base import Field
@@ -10,155 +11,91 @@ __all__ = [
   "CachedReferenceField",
 ]
 
-# TODO cached references should be rewritten to be EmbeddedDocument subclasses; this
-#      will enable easy support for type-validation; dynamic fields should be added
-#      to base fields using pre_save
+class ReferencedDynamicField(fields_base.DynamicField):
+  def pre_save(self, value, document):
+    """
+    Since we will be using the dynamic function on the source document, we
+    shouldn't do anything with the value here.
+    """
+    return value
 
-class CachedField(object):
-  def __init__(self, name, value):
-    self.name = name
-    self.value = value
-
-class AutoField(CachedField):
-  pass
-
-class DynamicField(CachedField):
-  def __init__(self, name, value, getter):
-    super(DynamicField, self).__init__(name, value)
-    self.getter = getter
-
-class CachedReference(object):
+class CachedReferenceDocument(EmbeddedDocument):
   """
-  Wrapper class for document references.
+  The base class for customized cached reference documents. It is a simple
+  embedded document with some additional methods. Should never be instantiated
+  directly.
   """
-  def __init__(self, fields, data, ext_document, src_document, src_fname):
-    """
-    Class constructor.
-    
-    @param fields: Cached fields
-    @param data: Stored data or Document instance
-    @param ext_document: External (referenced) document
-    @param src_document: Source document class
-    @param src_fname: Source field name
-    """
-    self.__dict__['_fields'] = {}
-    self.__dict__['_document'] = ext_document
-    self.__dict__['_src_document'] = src_document
-    self.__dict__['_src_fname'] = src_fname
-    
-    if isinstance(data, ext_document):
-      for field in fields:
-        if isinstance(field, CachedReferenceField.DynamicRef):
-          self._fields[field.alias] = DynamicField(field.alias, None, field.getter)
-        else:
-          self._fields[field] = CachedField(field, None)
-      
-      self._fields['id'] = AutoField('id', data._id)
-      self._fields['_version'] = AutoField('_version', data._version)
-      
-      self.sync(data)
-    else:
-      for field in fields:
-        if isinstance(field, CachedReferenceField.DynamicRef):
-          self._fields[field.alias] = DynamicField(field.alias, data.get(field.alias, None), field.getter)
-        else:
-          self._fields[field] = CachedField(field, ext_document._meta.field_from_data(field, data))
-      
-      self._fields['id'] = AutoField('id', data.get('id'))
-      self._fields['_version'] = AutoField('_version', data.get('version'))
-  
-  def __getstate__(self):
-    """
-    Returns state for serialization.
-    """
-    # Remove getters for dynamic fields as they will fail serialization otherwise
-    fields = self._fields.copy()
-    for name, field in fields.iteritems():
-      if isinstance(field, DynamicField):
-        field.getter = None
-    
-    return fields, self._document, self._src_document, self._src_fname
-  
-  def __setstate__(self, state):
-    """
-    Sets up state from serialized data.
-    """
-    self.__dict__['_fields'], self.__dict__['_document'], \
-    self.__dict__['_src_document'], self.__dict__['_src_fname'] = state
-    
-    # Re-bind getters for dynamic fields
-    descriptors = self._src_document._meta.get_field_by_name(self._src_fname).fields
-    for field in descriptors:
-      if isinstance(field, CachedReferenceField.DynamicRef):
-        self._fields[field.alias].getter = field.getter
-  
-  def __getattr__(self, name):
-    """
-    Transparently resolve cached fields.
-    """
-    try:
-      return self._fields[name].value
-    except KeyError:
-      raise AttributeError, name
-  
-  def __setattr__(self, name, value):
-    """
-    Prevent setting of attributes.
-    """
-    raise AttributeError("Cached document reference is read-only!")
-  
+  class Meta:
+    abstract = True
+
+  # Referenced document class
+  _referenced_doc = None
+
+  def sync(self, document = None):
+    if document is None:
+      document = self._referenced_doc.find(pk = self.id).one()
+    elif self.id is not None and document.pk != self.id:
+      raise ValueError("Referenced document identifier mismatch!")
+    elif self.version is not None and document._version < self.version:
+      return
+
+    # Copy values from source document and evaluate any DynamicFields on the
+    # source document
+    for name, field in self._meta.fields.items():
+      if name in ('id', 'version'):
+        continue
+
+      if isinstance(field, ReferencedDynamicField):
+        setattr(self, name, field.function(document))
+      else:
+        setattr(self, name, getattr(document, name))
+
+    # Update the id and version number
+    self.id = document.pk
+    self.version = document._version
+
   def follow(self):
     """
     Dereferences this cached reference and returns the complete version of
     this document.
     """
-    return self._document(pk = self.id)
-  
-  def sync(self, document = None):
-    """
-    Synchronizes cache with actually referenced document.
-    
-    @param document: Optional referenced document
-    """
-    if document is None:
-      document = self._document.find(_id = self.id).one()
-    elif document._id != self.id:
-      raise ValueError("Referenced document identifier mismatch!")
-    elif document._version < self._version:
-      return
-    
-    db_fields = document._db_prepare(fields = self._fields.keys(), db_names = False)
-    for field in self._fields.values():
-      if field.name in db_fields:
-        field.value = db_fields[field.name]
-      elif isinstance(field, DynamicField):
-        field.value = field.getter(document)
-    
-    self._fields['_version'].value = document._version
-  
-  def to_store(self):
-    """
-    Prepares this cached reference to be suitable for storing into the database.
-    """
-    cache = {}
-    for field in self._fields.values():
-      if isinstance(field, (AutoField, DynamicField)):
-        cache[field.name] = field.value
-      else:
-        self._document._meta.field_to_data(field.name, field.value, cache)
-    
-    return cache
-  
-  def to_search(self):
-    """
-    Prepares this cached reference to be suitable for storing into the search
-    engine.
-    """
-    cache = {}
-    for field in self._fields.values():
-      cache[field.name] = field.value
-    
-    return cache
+    return self._referenced_doc.find(pk = self.id).one()
+
+def create_cached_reference_document(name, document, fields):
+  """
+  Creates a new specialized cached reference (embedded) document with some
+  fields copied from the original document.
+
+  @param name: Class suffix (only used internally)
+  @param document: Source (referenced) document
+  @param fields: A list of fields to cache
+  @return: A new class that describes the cached reference
+  """
+  attrs = dict(
+    # Identifier (references primary key of the source document)
+    id = document._meta.get_primary_key_field().__class__(db_name = "id"),
+    # Version number
+    version = fields_base.IntegerField(db_name = "_version"),
+  )
+
+  for field in fields:
+    if isinstance(field, CachedReferenceField):
+      # Prevent inclusion of other cached references
+      raise TypeError("Cached references cannot cache other cached references!")
+    elif isinstance(field, CachedReferenceField.DynamicRef):
+      # Insert ReferencedDynamicFields when encountering DynamicRefs
+      attrs[field.alias] = ReferencedDynamicField(field.field_type, field.getter, on_change = field.dependencies)
+    else:
+      # For all other fields, simply copy them from the source document, but make sure that
+      # any pre_save handlers are disabled (otherwise they would corrupt cached data on save)
+      attrs[field] = copy.deepcopy(document._meta.get_field_by_name(field))
+      attrs[field].no_pre_save = True
+
+  # Setup the referenced document class
+  attrs['_referenced_doc'] = document
+
+  new_cls = type("_CachedReference_%s" % name.capitalize(), (CachedReferenceDocument,), attrs)
+  return new_cls
 
 class ReverseCachedReferenceDescriptor(Field):
   """
@@ -219,9 +156,7 @@ class ReverseCachedReferenceDescriptor(Field):
       doc = {}
       for field in self.searchable_fields:
         fval = reduce(getattr, field.split('.'), rel_doc)
-        if isinstance(fval, CachedReference):
-          fval = fval.to_search()
-        elif isinstance(fval, EmbeddedDocument):
+        if hasattr(fval, '_search_prepare'):
           fval = fval._search_prepare()
         
         doc[field.replace('.', '_')] = fval
@@ -237,14 +172,11 @@ class ReverseCachedReferenceDescriptor(Field):
     mapping = super(ReverseCachedReferenceDescriptor, self).get_search_mapping()
     mapping.update(dict(
       type = "object",
-      # TODO Making this non-dynamic requires type resolution for cached references
+      # TODO Make this non-dynamic
       dynamic = True,
       enabled = self.searchable
     ))
     return mapping
-
-class CachedReferenceFieldMetadata(FieldMetadata):
-  pass
 
 class CachedReferenceField(Field):
   """
@@ -255,7 +187,8 @@ class CachedReferenceField(Field):
     """
     Marker for a dynamic reference field.
     """
-    def __init__(self, alias, getter, dependencies, requires_document_class = None):
+    def __init__(self, field_type, alias, getter, dependencies, requires_document_class = None):
+      self.field_type = field_type
       self.alias = alias
       self.getter = getter
       self.dependencies = dependencies
@@ -274,7 +207,6 @@ class CachedReferenceField(Field):
     self.related_searchable = related_searchable
     self.no_id_index = no_id_index
     self.on_delete = on_delete
-    self.field_metadata = CachedReferenceFieldMetadata()
     
     # Calculate dependent fields
     self.dependencies = set()
@@ -302,7 +234,7 @@ class CachedReferenceField(Field):
     If this field has any subfields that have type metadata in the form
     of Field instances, it should be returned here.
     """
-    return self.field_metadata
+    return self.embedded._meta
   
   def setup_reverse_references(self, document_class, field_name):
     """
@@ -335,9 +267,10 @@ class CachedReferenceField(Field):
     def reference_resolved(document):
       if document._meta.abstract:
         raise ValueError("Referenced document class '{0}' is abstract!".format(document))
-      
+
       self.document = document
       self.pending_resolve = False
+      self.embedded = create_cached_reference_document(self.name, document, self.fields)
       
       if self.resolved_callback is not None:
         self.resolved_callback(document)
@@ -357,23 +290,14 @@ class CachedReferenceField(Field):
             # Verify that the class requirements (if any) are satisfied
             for cls in (field.requires_document_class or []):
               if not issubclass(document, cls):
-                raise TypeError("Dynamic field '{0}' requires the reference document class '{1}' to inherit '{2}'!".format(
+                raise TypeError("Dynamic field '{0}' requires the referenced document class '{1}' to inherit '{2}'!".format(
                   field.alias, document.__name__, cls.__name__
                 ))
-
-            # TODO Setup field metadata
           else:
-            # Setup field metadata
-            self.field_metadata.add_field(document._meta.get_field_by_name(field))
+            document._meta.get_field_by_name(field)
         except KeyError:
           raise KeyError("Cached field '{0}' does not exist on document '{1}' for cached reference '{2}'!".format(
             field, document.__name__, self.name))
-
-      # Add "id" field to local metadata
-      pk_field = copy.deepcopy(document._meta.get_field_by_name("pk"))
-      pk_field.name = "id"
-      pk_field.db_name = "id"
-      self.field_metadata.add_field(pk_field)
     
     references.track(self, self.document, reference_resolved)
   
@@ -387,48 +311,92 @@ class CachedReferenceField(Field):
         raise TypeError
     except TypeError:
       raise ValueError("Invalid document class set for field '{0}' or document class not resolved!".format(self.name))
-  
+
   def from_store(self, value, document):
     """
     Converts value from MongoDB store.
     """
     self.check_referenced_class()
+
+    # Load document from the database (same as embedded document)
+    reference = self.embedded()
+    reference._parent = document
+    reference._set_from_db(value)
     
     # Register cached reference instance for direct access, so one does not need
     # to traverse the whole (potential) hierarchy when updating references
-    reference = CachedReference(self.fields, value, self.document, document.__class__, self.name)
     refs = document.get_top_level_document()._reference_fields
-    refs.setdefault("{0}/{1}".format(self.reference_path, value['id']), []).append(reference)
-    
+    refs.setdefault("{0}/{1}".format(self.reference_path, reference.id), []).append(reference)
+
     return reference
-  
+
   def to_store(self, value, document):
     """
     Converts value to MongoDB store.
     """
     self.check_referenced_class()
+
     if isinstance(value, self.document):
-      if value._id is None:
+      if value.pk is None:
         raise ValueError("Referenced document is missing an identifier!")
-      
-      value = CachedReference(self.fields, value, self.document, document.__class__, self.name)
-      return value.to_store()
-    elif isinstance(value, CachedReference):
-      if not issubclass(value._document, self.document):
-        raise ValueError("Referenced document does not match the class specified in field definition!")
-      
-      return value.to_store()
+
+      reference = self.embedded()
+      reference.sync(value)
+      reference._parent = document
+      return reference._db_prepare()
+    elif isinstance(value, self.embedded):
+      value._parent = document
+      return value._db_prepare()
     else:
       raise ValueError("Unsupported value for field '{0}'!".format(self.name))
-  
-  from_search = from_store
-  to_search = to_store
+
+  def from_search(self, value, document):
+    """
+    Converts value from Elastic Search store.
+    """
+    self.check_referenced_class()
+
+    # Load document from the database (same as embedded document)
+    reference = self.embedded()
+    reference._parent = document
+    reference._set_from_search(value)
+
+    # Register cached reference instance for direct access, so one does not need
+    # to traverse the whole (potential) hierarchy when updating references
+    refs = document.get_top_level_document()._reference_fields
+    refs.setdefault("{0}/{1}".format(self.reference_path, reference.id), []).append(reference)
+
+    return reference
+
+  def to_search(self, value, document):
+    """
+    Converts value to Elastic Search store.
+    """
+    self.check_referenced_class()
+
+    if isinstance(value, self.document):
+      if value.pk is None:
+        raise ValueError("Referenced document is missing an identifier!")
+
+      reference = self.embedded()
+      reference.sync(value)
+      reference._parent = document
+      return reference._search_prepare()
+    elif isinstance(value, self.embedded):
+      value._parent = document
+      return value._search_prepare()
+    else:
+      raise ValueError("Unsupported value for field '{0}'!".format(self.name))
 
   def get_search_mapping(self):
     """
     Returns field mapping for Elastic Search.
     """
-    return dict(
+    mapping = super(CachedReferenceField, self).get_search_mapping()
+    mapping.update(dict(
       type = "object",
-      enabled = False,
-    )
+      dynamic = "strict",
+      enabled = self.searchable,
+      properties = self.embedded._meta.search_mapping_prepare()
+    ))
+    return mapping

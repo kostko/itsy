@@ -24,6 +24,8 @@ __all__ = [
   "EnumField",
   "ListField",
   "SetField",
+  "DictField",
+  "DynamicField",
   "EmbeddedDocumentField",
   "CachedReferenceField",
 ]

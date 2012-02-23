@@ -17,13 +17,13 @@ class Field(object):
   creation_counter = 0
   
   def __init__(self, default = None, required = False, revisable = True, virtual = False,
-               searchable = True, indexed = False, db_field = None, search_index = None,
+               searchable = True, indexed = False, db_name = None, search_index = None,
                primary_key = False):
     """
     Class constructor.
     """
     self.name = None
-    self.db_name = db_field
+    self.db_name = db_name
     
     # Convert the defaulter to a callable lambda function
     if default is not None and not callable(default):
@@ -37,6 +37,7 @@ class Field(object):
     self.search_index = search_index or {}
     self.revisable = revisable
     self.indexed = indexed
+    self.no_pre_save = False
     self.primary_key = primary_key
     if primary_key:
       self.db_name = "_id"
@@ -886,9 +887,14 @@ class DynamicField(Field):
   def to_store(self, value, document):
     return self.subfield.to_store(value, document)
 
-  from_store = to_store
-  to_search = to_store
-  from_search = to_store
+  def from_store(self, value, document):
+    return self.subfield.from_store(value, document)
+
+  def to_search(self, value, document):
+    return self.subfield.to_search(value, document)
+
+  def from_search(self, value, document):
+    return self.subfield.from_search(value, document)
 
   def get_search_mapping(self):
     return self.subfield.get_search_mapping()

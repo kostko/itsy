@@ -18,7 +18,7 @@ def track(field, document, callback):
   if isinstance(document, str):
     # Lazy tracking, wait for the document to be imported
     if document == 'self':
-      callback(field.cls)
+      pending_callbacks.setdefault(field.cls.__name__, []).append(callback)
     elif document in registered_documents:
       callback(registered_documents[document])
     else:

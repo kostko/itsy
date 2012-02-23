@@ -142,16 +142,12 @@ class DocumentMetadata(FieldMetadata):
   # Reverse references
   reverse_references = None
   
-  # Update tasks
-  update_tasks = None
-  
   def __init__(self, embedded = False, metadata = None):
     """
     Class constructor.
     """
     super(DocumentMetadata, self).__init__()
     self.embedded = embedded
-    self.update_tasks = []
     
     if metadata is not None:
       self.abstract = metadata.get('abstract', False)
@@ -437,8 +433,10 @@ class BaseDocument(object):
       # If only a subset of fields is desired check that this one is in
       if fields is not None and name not in fields:
         continue
-      
-      value = field.pre_save(self._values.get(field), self)
+
+      value = self._values.get(field)
+      if not field.no_pre_save:
+        value = field.pre_save(value, self)
       field._validate(value, self)
       self._values[field] = value
       
@@ -741,16 +739,11 @@ class Document(BaseDocument):
     """
     if tasks.get('reference_cache', False):
       # Dispatch task for syncing the cached references
-      common_tasks.cache_spawn_syncers.delay(self, modified_fields)
+      common_tasks.cache_spawn_syncers.delay(self.__class__, self._id, modified_fields)
     
     if tasks.get('search_indices', False) and self._meta.searchable:
       # Dispatch task for updating search indices
-      common_tasks.search_index_update.delay(self)
-    
-    # Invoke any registered tasks
-    for predicate, task in self._meta.update_tasks:
-      if predicate(self):
-        task.delay(self)
+      common_tasks.search_index_update.delay(self.__class__, self._id)
   
   def revert(self, version, author = None):
     """
@@ -808,23 +801,12 @@ class Document(BaseDocument):
     self._meta.collection.remove(self._id, safe = True)
     self._meta.revisions.remove({ "doc" : self._id }, safe = True)
     if self._meta.searchable:
-      common_tasks.search_index_remove.delay(self)
+      common_tasks.search_index_remove.delay(self.__class__, self._id)
     
     # Delete all referenced documents
     for document in cascade_documents:
       document.delete()
-  
-  @classmethod
-  def register_update_task(cls, task, predicate = lambda x: True):
-    """
-    Registers a deferred background task that will be executed when
-    a document matching the predicate gets modified.
-    
-    @param task: Task that will be scheduled for execution
-    @param predicate: Predicate function that matches documents
-    """
-    cls._meta.update_tasks.append((predicate, task))
-  
+
   @classmethod
   def find(cls, **criteria):
     """
