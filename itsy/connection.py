@@ -12,10 +12,8 @@ store = DocumentStore(
   settings.ITSY_MONGODB_DB
 )
 
-# Create a default documentsearch connection
+# Create a default document search connection
 search = DocumentSearch(
-  settings.ITSY_ELASTICSEARCH_HOST,
-  settings.ITSY_ELASTICSEARCH_PORT,
+  settings.ITSY_ELASTICSEARCH_SERVERS,
   settings.ITSY_ELASTICSEARCH_INDEX
 )
-

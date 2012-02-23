@@ -64,15 +64,14 @@ class DocumentSearch(object):
   """
   A container for Elastic Search connections.
   """
-  def __init__(self, host, port, index_prefix):
+  def __init__(self, servers, index_prefix):
     """
     Class constructor.
     
-    @param host: Hostname of Elastic Search server
-    @param port: Port of Elastic Search server
+    @param servers: A list of Elastic Search servers
     @param index_prefix: Index prefix
     """
-    self._es = pyes.ES("{0}:{1}".format(host, port))
+    self._es = pyes.ES(servers)
     self._index_prefix = index_prefix
   
   def index(self, name, typ):
