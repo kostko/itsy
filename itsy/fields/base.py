@@ -17,7 +17,8 @@ class Field(object):
   creation_counter = 0
   
   def __init__(self, default = None, required = False, revisable = True, virtual = False,
-               searchable = True, indexed = False, db_field = None, search_index = None):
+               searchable = True, indexed = False, db_field = None, search_index = None,
+               primary_key = False):
     """
     Class constructor.
     """
@@ -36,6 +37,9 @@ class Field(object):
     self.search_index = search_index or {}
     self.revisable = revisable
     self.indexed = indexed
+    self.primary_key = primary_key
+    if primary_key:
+      self.db_name = "_id"
     
     # Properly setup the creation counter to impose field ordering
     self.creation_counter = Field.creation_counter
@@ -195,15 +199,6 @@ class Field(object):
     This method may recursively setup reverse references.
     """
     pass
-
-class PrimaryKeyField(Field):
-  """
-  Primary key field.
-  """
-  def __init__(self, db_field = '_id', **kwargs):
-    kwargs['virtual'] = True
-    kwargs['searchable'] = False
-    super(PrimaryKeyField, self).__init__(db_field = db_field, **kwargs)
 
 class TextField(Field):
   """

@@ -66,9 +66,28 @@ class FieldMetadata(object):
     """
     Adds a new field for this document.
     """
+    if field.name in self.fields:
+      raise KeyError("Field with name '%s' already exists!" % field.name)
+    elif field.db_name in self.db_fields:
+      raise KeyError("Field with db_name '%s' already exists!" % field.db_name)
+
     # TODO this should use ordered dictionary
     self.fields[field.name] = field
     self.db_fields[field.db_name] = field
+
+  def add_field_alias(self, field, alias):
+    """
+    Sets up an alias for the field. Note that this alias does not behave entirely
+    like the original field - you cannot access this field as a document attribute,
+    but you can use it in queries etc.
+
+    @param field: Original field
+    @param alias: New alias name
+    """
+    if alias in self.fields:
+      raise KeyError("Field with name '%s' already exists!" % alias)
+
+    self.fields[alias] = field
 
   def field_from_data(self, name, data):
     """
@@ -145,6 +164,7 @@ class DocumentMetadata(FieldMetadata):
     
     self.field_list = []
     self.reverse_references = []
+    self.primary_key_field = None
     
     if not self.abstract and not self.embedded:
       if not self.collection_base:
@@ -153,12 +173,28 @@ class DocumentMetadata(FieldMetadata):
       self.collection = store.collection(self.collection_base)
       self.revisions = store.collection("{0}.revisions".format(self.collection_base))
       self.search_engine = search.index(self.collection_base, self.classname.lower())
-  
+
+  def get_primary_key_field(self):
+    """
+    Returns the key that is marked as a primary key in this document.
+    """
+    return self.primary_key_field
+
   def add_field(self, field):
     """
     Adds a new field for this document.
     """
     super(DocumentMetadata, self).add_field(field)
+
+    if field.primary_key:
+      if self.primary_key_field is not None:
+        raise ImproperlyConfigured("Only one field can be marked as a primary!")
+      elif self.embedded:
+        raise ImproperlyConfigured("Embedded documents can't contain primary keys!")
+      elif field.db_name != "_id":
+        raise ImproperlyConfigured("Primary key's db_name must be _id!")
+
+      self.primary_key_field = field
 
     if not self.embedded and not self.abstract:
       # Process index for this field
@@ -226,7 +262,6 @@ class MetaDocument(type):
     # Pre-process fields
     from . import fields as db_fields
     fields = []
-    fields.append(("pk", db_fields.PrimaryKeyField()))
     for name, obj in attrs.items():
       if isinstance(obj, db_fields.Field):
         fields.append((name, obj))
@@ -246,6 +281,16 @@ class MetaDocument(type):
     # Process document fields
     for name, obj in fields:
       obj.contribute_to_class(new_class, name)
+
+    # Ensure that there is a primary key if none has been created
+    if not _meta.abstract and not _meta.embedded:
+      pkey_field = _meta.get_primary_key_field()
+      if pkey_field is None:
+        pkey_field = db_fields.IntegerField(primary_key = True)
+        pkey_field.contribute_to_class(new_class, "pk")
+      else:
+        _meta.add_field_alias(pkey_field, "pk")
+
     for name, obj in fields:
       obj.check_configuration()
 
@@ -502,7 +547,7 @@ class Document(BaseDocument):
     @param data: Data dictionary
     """
     try:
-      self._id = data['_id']
+      self._id = self._meta.get_primary_key_field().from_store(data['_id'], self)
       self._version = data['_version']
     except KeyError:
       raise exceptions.MissingVersionMetadata
@@ -522,7 +567,7 @@ class Document(BaseDocument):
     @param data: Data dictionary
     """
     try:
-      self._id = data['_id']
+      self._id = self._meta.ger_primary_key_field().from_search(data['_id'], self)
       #self._version = data['_version'] XXX
     except KeyError:
       raise exceptions.MissingVersionMetadata
@@ -595,6 +640,9 @@ class Document(BaseDocument):
       return
     
     if self._id is not None:
+      # Remove _id from document
+      del document["_id"]
+
       # An existing document is being updated, first create a snapshot and
       # acquire the document update mutex
       old_document = self._snapshot(snapshot)
@@ -620,7 +668,8 @@ class Document(BaseDocument):
       document['_mutex'] = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
       document['_last_update'] = datetime.datetime.utcnow()
       document['_last_author'] = author
-      
+
+      # TODO this should be moved to SerialField somehow
       while True:
         pk = self._meta.collection.find_one(sort = [('_id', pymongo.DESCENDING)], fields = ['_id'])
         document['_id'] = (pk['_id'] + 1) if pk is not None else 1
