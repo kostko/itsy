@@ -11,5 +11,6 @@ class Command(management_base.BaseCommand):
     Performs a search type mapping synchronization.
     """
     for document_cls in itsy_registry.document_registry:
-      self.stdout.write("Syncing search type mapping for %s...\n" % document_cls.__name__)
-      document_cls._meta.emit_search_mappings()
+      if document_cls._meta.searchable:
+        self.stdout.write("Syncing search type mapping for %s...\n" % document_cls.__name__)
+        document_cls._meta.emit_search_mappings()
