@@ -32,6 +32,13 @@ class CachedReferenceDocument(EmbeddedDocument):
   _referenced_doc = None
 
   def sync(self, document = None):
+    """
+    Syncs the cached fields with the source document. If the document is not
+    provided, it is automatically fetched from the database, based on the
+    identifier.
+
+    @param document: Optional document instance
+    """
     if document is None:
       document = self._referenced_doc.find(pk = self.id).one()
     elif self.id is not None and document.pk != self.id:
