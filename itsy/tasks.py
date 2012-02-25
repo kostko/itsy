@@ -13,9 +13,17 @@ def cache_resync(source_doc_class, source_doc_id, doc_class, doc_id, fields):
   @param doc_id: Destination document identifier
   @param fields: Fields that need updating
   """
+  try:
+    source_doc = source_doc_class(pk = source_doc_id)
+  except source_doc_class.DoesNotExist:
+    return
+
+  try:
+    doc = doc_class(pk = doc_id)
+  except doc_class.DoesNotExist:
+    return
+
   # Resync all fields
-  source_doc = source_doc_class(pk = source_doc_id)
-  doc = doc_class(pk = doc_id)
   for field_path in fields:
     doc.sync_reference_field(field_path, source_doc)
   
@@ -35,7 +43,11 @@ def cache_spawn_syncers(doc_class, doc_id, modified_fields):
   @param document: Source document
   @param modified_fields: Fields that have been modified
   """
-  document = doc_class(pk = doc_id)
+  try:
+    document = doc_class(pk = doc_id)
+  except doc_class.DoesNotExist:
+    return
+
   for (d_class, d_id), fields in document.get_reverse_references(modified_fields).iteritems():
     cache_resync.delay(doc_class, doc_id, d_class, d_id, fields)
 
@@ -48,9 +60,11 @@ def search_index_update(doc_class, doc_id):
   """
   from .document import DocumentSource
 
-  document = doc_class(pk = doc_id)
   try:
+    document = doc_class(pk = doc_id)
     document.save(target = DocumentSource.Search)
+  except doc_class.DoesNotExist:
+    return
   except Exception, e:
     search_index_update.retry(exc = e)
 
