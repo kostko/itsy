@@ -282,7 +282,7 @@ class MetaDocument(type):
     if not _meta.abstract and not _meta.embedded:
       pkey_field = _meta.get_primary_key_field()
       if pkey_field is None:
-        pkey_field = db_fields.IntegerField(primary_key = True)
+        pkey_field = db_fields.SerialField(primary_key = True)
         pkey_field.contribute_to_class(new_class, "pk")
       else:
         _meta.add_field_alias(pkey_field, "pk")
@@ -511,12 +511,10 @@ class Document(BaseDocument):
       raise ValueError("Unable to instantiate an abstract document '{0}'!".format(self.__class__.__name__))
     
     super(Document, self).__init__()
-    self._id = None
-    
     if pk is None:
       return
-    
-    document = self._meta.collection.find_one({ "_id" : pk })
+
+    document = self._meta.collection.find_one({ "_id" : self._meta.get_primary_key_field().to_store(pk, self) })
     if document is None:
       raise exceptions.DoesNotExist
     
@@ -527,13 +525,13 @@ class Document(BaseDocument):
     Returns state for serialization.
     """
     super_state = super(Document, self).__getstate__()
-    return self._id, self._version, super_state
+    return self.pk, self._version, super_state
   
   def __setstate__(self, state):
     """
     Sets up state from serialized data.
     """
-    self._id, self._version, super_state = state
+    self.pk, self._version, super_state = state
     super(Document, self).__setstate__(super_state)
     self._document_source = DocumentSource.Db
   
@@ -545,7 +543,6 @@ class Document(BaseDocument):
     @param data: Data dictionary
     """
     try:
-      self._id = self._meta.get_primary_key_field().from_store(data['_id'], self)
       self._version = data['_version']
     except KeyError:
       raise exceptions.MissingVersionMetadata
@@ -564,12 +561,6 @@ class Document(BaseDocument):
     
     @param data: Data dictionary
     """
-    try:
-      self._id = self._meta.ger_primary_key_field().from_search(data['_id'], self)
-      #self._version = data['_version'] XXX
-    except KeyError:
-      raise exceptions.MissingVersionMetadata
-    
     super(Document, self)._set_from_search(data)
     self._document_source = DocumentSource.Search
   
@@ -579,14 +570,14 @@ class Document(BaseDocument):
     primary key). This does not mean that the document actually exists at this
     moment, just that it did when it was fetched.
     """
-    return self._id is not None
+    return self.pk is not None
   
   def refresh(self):
     """
     Refreshes this object from the database. This will reset any
     modification made to it.
     """
-    document = self._meta.collection.find_one({ "_id" : self._id })
+    document = self._meta.collection.find_one({ "_id" : self.pk })
     if document is None:
       raise exceptions.DoesNotExist
     
@@ -630,14 +621,15 @@ class Document(BaseDocument):
     @param tasks: Tasks that should be invoked
     @param author: Author metadata
     """
-    if not self._values and self._id is not None:
+    if not self._values and self.pk is not None:
       return
-    
-    document = self._db_prepare(update = self._id is not None)
+
+    is_update = self.pk is not None
+    document = self._db_prepare(update = is_update)
     if not document:
       return
     
-    if self._id is not None:
+    if is_update:
       # Remove _id from document
       del document["_id"]
 
@@ -652,7 +644,7 @@ class Document(BaseDocument):
       document['$set']['_last_update'] = datetime.datetime.utcnow()
       document['$set']['_last_author'] = author
       self._meta.collection.update(
-        { "_id" : self._id },
+        { "_id" : self.pk },
         document,
         safe = True
       )
@@ -666,19 +658,8 @@ class Document(BaseDocument):
       document['_mutex'] = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
       document['_last_update'] = datetime.datetime.utcnow()
       document['_last_author'] = author
-
-      # TODO this should be moved to SerialField somehow
-      while True:
-        pk = self._meta.collection.find_one(sort = [('_id', pymongo.DESCENDING)], fields = ['_id'])
-        document['_id'] = (pk['_id'] + 1) if pk is not None else 1
-        
-        try:
-          self._meta.collection.insert(document, safe = True)
-          self.pk = self._id = document['_id']
-          self._version = 1
-          break
-        except pymongo.errors.DuplicateKeyError:
-          continue
+      self._meta.collection.insert(document, safe = True)
+      self._version = 1
     
       # Dispatch update tasks
       tasks.update({ 'reference_cache' : False })
@@ -699,7 +680,7 @@ class Document(BaseDocument):
     # Fetch existing document from database and acquire the edit mutex
     now = datetime.datetime.utcnow()
     document = self._meta.collection.find_and_modify(
-      { "_id" : self._id, "_mutex" : { "$lt" : now }, "_version" : self._version },
+      { "_id" : self.pk, "_mutex" : { "$lt" : now }, "_version" : self._version },
       { "$set" : { "_mutex" : now + datetime.timedelta(seconds = 30) } }
     )
     if not document:
@@ -714,10 +695,10 @@ class Document(BaseDocument):
       
       # Create a new revision for the specified version
       self._meta.revisions.update(
-        { "_id" : "{0}.{1}".format(self._id, self._version) },
+        { "_id" : "{0}.{1}".format(self.pk, self._version) },
         {
-          "_id" : "{0}.{1}".format(self._id, self._version),
-          "doc" : self._id,
+          "_id" : "{0}.{1}".format(self.pk, self._version),
+          "doc" : self.pk,
           "version" : self._version,
           "created" : document['_last_update'],
           "author" : document['_last_author'],
@@ -739,11 +720,11 @@ class Document(BaseDocument):
     """
     if tasks.get('reference_cache', False):
       # Dispatch task for syncing the cached references
-      common_tasks.cache_spawn_syncers.delay(self.__class__, self._id, modified_fields)
+      common_tasks.cache_spawn_syncers.delay(self.__class__, self.pk, modified_fields)
     
     if tasks.get('search_indices', False) and self._meta.searchable:
       # Dispatch task for updating search indices
-      common_tasks.search_index_update.delay(self.__class__, self._id)
+      common_tasks.search_index_update.delay(self.__class__, self.pk)
   
   def revert(self, version, author = None):
     """
@@ -759,7 +740,7 @@ class Document(BaseDocument):
     """
     Saves the document into Elastic Search.
     """
-    if self._id is None:
+    if self.pk is None:
       raise exceptions.DocumentNotSaved
     
     if not self._meta.searchable:
@@ -769,7 +750,7 @@ class Document(BaseDocument):
       self.refresh()
     
     document = self._search_prepare()
-    document['_id'] = self._id
+    document['_id'] = document["pk"]
     document['_version'] = self._version
     self._meta.search_engine.index(document)
   
@@ -780,7 +761,7 @@ class Document(BaseDocument):
     """
     cascade_documents = []
     for doc_class, field_path, field in self._meta.reverse_references:
-      documents = doc_class.find(**{ field_path.replace('.', '__') : self._id })
+      documents = doc_class.find(**{ field_path.replace('.', '__') : self.pk })
       if field.on_delete == RESTRICT and documents.count() > 0:
         raise exceptions.DeleteRestrictedByReference
       elif field.on_delete == CASCADE:
@@ -798,10 +779,10 @@ class Document(BaseDocument):
     
     # Acquire the editorial mutex before deleting this document
     self._snapshot(False)
-    self._meta.collection.remove(self._id, safe = True)
-    self._meta.revisions.remove({ "doc" : self._id }, safe = True)
+    self._meta.collection.remove(self.pk, safe = True)
+    self._meta.revisions.remove({ "doc" : self.pk }, safe = True)
     if self._meta.searchable:
-      common_tasks.search_index_remove.delay(self.__class__, self._id)
+      common_tasks.search_index_remove.delay(self.__class__, self.pk)
     
     # Delete all referenced documents
     for document in cascade_documents:
@@ -840,7 +821,7 @@ class Document(BaseDocument):
     Syncs a referenced document field that is identified by its path in
     the embedded document hierarchy.
     """
-    for ref in self._reference_fields.get("{0}/{1}".format(path, document._id), []):
+    for ref in self._reference_fields.get("{0}/{1}".format(path, document.pk), []):
       ref.sync(document)
   
   def get_reverse_references(self, modified_fields):
@@ -855,7 +836,7 @@ class Document(BaseDocument):
         continue
       
       # Attempt to find referencing documents for the given identifier
-      for doc_id in doc_class.find(**{ field_path.replace('.', '__') : self._id }).ids():
+      for doc_id in doc_class.find(**{ field_path.replace('.', '__') : self.pk }).ids():
         refs.setdefault((doc_class, doc_id), []).append(field_path)
     
     return refs

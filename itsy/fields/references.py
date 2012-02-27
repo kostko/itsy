@@ -85,6 +85,9 @@ def create_cached_reference_document(name, document, fields):
     version = fields_base.IntegerField(db_name = "_version"),
   )
 
+  # Ensure that serial primary keys don't get incremented
+  attrs["id"].no_pre_save = True
+
   for field in fields:
     if isinstance(field, CachedReferenceField):
       # Prevent inclusion of other cached references
@@ -128,10 +131,10 @@ class ReverseCachedReferenceDescriptor(Field):
     """
     Performs a query that returns documents that reference the current object.
     """
-    if obj._id is None:
+    if obj.pk is None:
       raise AttributeError("Object must be saved before reverse references can be traversed!")
     
-    return self.dst_class.find(**{ self.dst_field_path : obj._id })
+    return self.dst_class.find(**{ self.dst_field_path : obj.pk })
   
   def __delete__(self, obj):
     """
