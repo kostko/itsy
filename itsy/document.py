@@ -577,7 +577,7 @@ class Document(BaseDocument):
     Refreshes this object from the database. This will reset any
     modification made to it.
     """
-    document = self._meta.collection.find_one({ "_id" : self.pk })
+    document = self._meta.collection.find_one({ "_id" : self._pk_for_db() })
     if document is None:
       raise exceptions.DoesNotExist
     
@@ -644,7 +644,7 @@ class Document(BaseDocument):
       document['$set']['_last_update'] = datetime.datetime.utcnow()
       document['$set']['_last_author'] = author
       self._meta.collection.update(
-        { "_id" : self.pk },
+        { "_id" : self._pk_for_db() },
         document,
         safe = True
       )
@@ -658,7 +658,9 @@ class Document(BaseDocument):
       document['_mutex'] = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
       document['_last_update'] = datetime.datetime.utcnow()
       document['_last_author'] = author
-      self._meta.collection.insert(document, safe = True)
+      new_pk = self._meta.collection.insert(document, safe = True)
+      if new_pk is not None:
+        self.pk = self._meta.get_primary_key_field().from_store(new_pk, self)
       self._version = 1
     
       # Dispatch update tasks
@@ -677,10 +679,12 @@ class Document(BaseDocument):
     @param snapshot: True to create a snapshot, False to just acquire a mutex
     @return: Current version of the document
     """
+    pk = self._pk_for_db()
+
     # Fetch existing document from database and acquire the edit mutex
     now = datetime.datetime.utcnow()
     document = self._meta.collection.find_and_modify(
-      { "_id" : self.pk, "_mutex" : { "$lt" : now }, "_version" : self._version },
+      { "_id" : pk, "_mutex" : { "$lt" : now }, "_version" : self._version },
       { "$set" : { "_mutex" : now + datetime.timedelta(seconds = 30) } }
     )
     if not document:
@@ -698,7 +702,7 @@ class Document(BaseDocument):
         { "_id" : "{0}.{1}".format(self.pk, self._version) },
         {
           "_id" : "{0}.{1}".format(self.pk, self._version),
-          "doc" : self.pk,
+          "doc" : pk,
           "version" : self._version,
           "created" : document['_last_update'],
           "author" : document['_last_author'],
@@ -753,7 +757,22 @@ class Document(BaseDocument):
     document['_id'] = document["pk"]
     document['_version'] = self._version
     self._meta.search_engine.index(document)
-  
+
+  def _pk_for_db(self, search = False):
+    """
+    Returns a properly encoded primary key so that it can be used directly with
+    MongoDB (or Elastic Search) driver.
+
+    @param search: Should the field be formatted for ES instead
+    """
+    if self.pk is None:
+      return None
+
+    if not search:
+      return self._meta.get_primary_key_field().to_store(self.pk, self)
+    else:
+      return self._meta.get_primary_key_field().to_search(self.pk, self)
+
   def _check_delete_restrict(self):
     """
     Check if there are any reverse references that prevent deletion of this
@@ -776,13 +795,14 @@ class Document(BaseDocument):
     Deletes this document.
     """
     cascade_documents = self._check_delete_restrict()
+    pk = self._pk_for_db()
     
     # Acquire the editorial mutex before deleting this document
     self._snapshot(False)
-    self._meta.collection.remove(self.pk, safe = True)
-    self._meta.revisions.remove({ "doc" : self.pk }, safe = True)
+    self._meta.collection.remove(pk, safe = True)
+    self._meta.revisions.remove({ "doc" : pk }, safe = True)
     if self._meta.searchable:
-      common_tasks.search_index_remove.delay(self.__class__, self.pk)
+      common_tasks.search_index_remove.delay(self.__class__, self._pk_for_db(search = True))
     
     # Delete all referenced documents
     for document in cascade_documents:
