@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 class ReferencedDynamicField(fields_base.DynamicField):
-  def pre_save(self, value, document):
+  def pre_save(self, value, document, update = False):
     """
     Since we will be using the dynamic function on the source document, we
     shouldn't do anything with the value here.

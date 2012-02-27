@@ -416,7 +416,7 @@ class BaseDocument(object):
       if field is not None:
         self._values[field] = field.from_search(value, self)
   
-  def _db_prepare(self, fields = None, db_names = True):
+  def _db_prepare(self, fields = None, db_names = True, update = False):
     """
     Prepares the document for saving into the database.
     
@@ -436,7 +436,7 @@ class BaseDocument(object):
 
       value = self._values.get(field)
       if not field.no_pre_save:
-        value = field.pre_save(value, self)
+        value = field.pre_save(value, self, update = update)
       field._validate(value, self)
       self._values[field] = value
       
@@ -633,7 +633,7 @@ class Document(BaseDocument):
     if not self._values and self._id is not None:
       return
     
-    document = self._db_prepare()
+    document = self._db_prepare(update = self._id is not None)
     if not document:
       return
     

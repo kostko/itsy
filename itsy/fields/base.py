@@ -115,7 +115,7 @@ class Field(object):
     if value is not None:
       self.validate(value, document)
   
-  def pre_save(self, value, document):
+  def pre_save(self, value, document, update = False):
     """
     Called before saving the field and should return the field's value.
     """
@@ -419,14 +419,14 @@ class DateTimeField(Field):
     super(DateTimeField, self).__init__(**kwargs)
     self.auto_update = auto_update
   
-  def pre_save(self, value, document):
+  def pre_save(self, value, document, update = False):
     """
     Sets up a default value when auto update is set for this field.
     """
     if self.auto_update:
       value = datetime.datetime.utcnow()
     
-    return super(DateTimeField, self).pre_save(value, document)
+    return super(DateTimeField, self).pre_save(value, document, update = update)
   
   def validate(self, value, document):
     """
@@ -456,7 +456,7 @@ class SlugField(TextField):
     self.template = template
     super(SlugField, self).__init__(**kwargs)
   
-  def pre_save(self, value, document):
+  def pre_save(self, value, document, update = False):
     """
     Automatically generates the slug.
     """
@@ -877,7 +877,7 @@ class DynamicField(Field):
     self.on_change = on_change
     super(DynamicField, self).__init__(**kwargs)
 
-  def pre_save(self, value, document):
+  def pre_save(self, value, document, update = False):
     if self.on_change is not None:
       # TODO
       pass
