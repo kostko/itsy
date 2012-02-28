@@ -24,7 +24,7 @@ class SerialField(IntegerField):
     Generates a new unique sequence value.
     """
     if update:
-      return
+      return value
 
     # Allocate a new identifier
     return db_store.collection(self.counters_collection).find_and_modify(
