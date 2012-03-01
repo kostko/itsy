@@ -89,12 +89,15 @@ def search_index_reindex(document_cls, offset = 0, batch_size = 1000):
   @param offset: Starting document offset
   """
   while True:
-    count = 0
-    for document in document_cls.find().only("pk").order_by("pk").skip(offset).limit(batch_size):
-      search_index_update.delay(document_cls, document.pk)
-      count += 1
-      time.sleep(0.1)
+    try:
+      count = 0
+      for document in document_cls.find().only("pk").order_by("pk").skip(offset).limit(batch_size):
+        search_index_update.delay(document_cls, document.pk)
+        count += 1
+        time.sleep(0.1)
 
-    offset += batch_size
-    if count < batch_size:
-      break
+      offset += batch_size
+      if count < batch_size:
+        break
+    except:
+      time.sleep(1.0)
