@@ -202,7 +202,7 @@ class SearchResultSet(object):
   """
   Wrapper for Elastic Search result sets.
   """
-  def __init__(self, document, query, offset = 0, limit = 35, min_score = None):
+  def __init__(self, document, query, offset = 0, limit = 35, min_score = None, highlight = None):
     """
     Class constructor.
     
@@ -211,6 +211,7 @@ class SearchResultSet(object):
     @param offset: Optional offset in search results
     @param limit: Optional limit in search results
     @param min_score: Optional minimum score
+    @param highlight: Optional highlight information
     """
     self.document = document
     query = {
@@ -219,7 +220,10 @@ class SearchResultSet(object):
     
     if min_score is not None:
       query['min_score'] = min_score
-    
+
+    if highlight is not None:
+      query["highlight"] = highlight
+
     self._results = document._meta.search_engine.search(
       query,
       **{
@@ -234,13 +238,13 @@ class SearchResultSet(object):
     Returns the total number of hits.
     """
     return self._results['hits']['total']
-  
+
   def _to_document(self, hit):
     """
     Converts a search result into a document.
     """
     obj = self.document()
-    obj._set_from_search(hit)
+    obj._set_from_search(hit['_source'], hit.get('highlight'))
     return obj
   
   def __iter__(self):
@@ -248,5 +252,5 @@ class SearchResultSet(object):
     Iterates over the results.
     """
     for hit in self._results['hits']['hits']:
-      yield self._to_document(hit['_source'])
+      yield self._to_document(hit)
 

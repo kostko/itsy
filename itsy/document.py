@@ -550,7 +550,7 @@ class Document(BaseDocument):
     super(Document, self)._set_from_db(data)
     self._document_source = DocumentSource.Db
   
-  def _set_from_search(self, data):
+  def _set_from_search(self, data, highlight = None):
     """
     Sets up this document by populating it with data obtained from
     Elastic Search. The data obtained in this way may be incomplete, since
@@ -560,9 +560,17 @@ class Document(BaseDocument):
     Access to database instance is available by calling `refresh`.
     
     @param data: Data dictionary
+    @param highlight: Optional highlight metadata
     """
     super(Document, self)._set_from_search(data)
     self._document_source = DocumentSource.Search
+    self._highlight = highlight
+
+  def get_highlighting(self):
+    """
+    Returns highlighting metadata for search results.
+    """
+    return self._highlight
   
   def is_persistent(self):
     """
@@ -571,7 +579,13 @@ class Document(BaseDocument):
     moment, just that it did when it was fetched.
     """
     return self.pk is not None
-  
+
+  def is_search_result(self):
+    """
+    Returns true if this document is a search result.
+    """
+    return self._document_source == DocumentSource.Search
+
   def refresh(self):
     """
     Refreshes this object from the database. This will reset any
