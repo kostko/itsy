@@ -753,6 +753,13 @@ class Document(BaseDocument):
     """
     # TODO
     pass
+
+  def get_search_boost(self):
+    """
+    This method may be overriden to compute a boosting value for this
+    document.
+    """
+    return 1.0
   
   def _save_to_search(self):
     """
@@ -766,10 +773,12 @@ class Document(BaseDocument):
     
     if self._document_source != DocumentSource.Db:
       self.refresh()
-    
+
     document = self._search_prepare()
     document['_id'] = document["pk"]
     document['_version'] = self._version
+    document['_boost'] = float(self.get_search_boost())
+
     self._meta.search_engine.index(document)
 
   def _pk_for_db(self, search = False):
