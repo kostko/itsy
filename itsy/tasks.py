@@ -14,12 +14,12 @@ def cache_resync(source_doc_class, source_doc_id, doc_class, doc_id, fields):
   @param fields: Fields that need updating
   """
   try:
-    source_doc = source_doc_class(pk = source_doc_id)
+    source_doc = source_doc_class.get(pk = source_doc_id)
   except source_doc_class.DoesNotExist:
     return
 
   try:
-    doc = doc_class(pk = doc_id)
+    doc = doc_class.get(pk = doc_id)
   except doc_class.DoesNotExist:
     return
 
@@ -44,7 +44,7 @@ def cache_spawn_syncers(doc_class, doc_id, modified_fields):
   @param modified_fields: Fields that have been modified
   """
   try:
-    document = doc_class(pk = doc_id)
+    document = doc_class.get(pk = doc_id)
   except doc_class.DoesNotExist:
     return
 
@@ -61,7 +61,7 @@ def search_index_update(doc_class, doc_id):
   from .document import DocumentSource
 
   try:
-    document = doc_class(pk = doc_id)
+    document = doc_class.get(pk = doc_id)
     document.save(target = DocumentSource.Search)
   except doc_class.DoesNotExist:
     return

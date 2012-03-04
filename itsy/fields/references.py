@@ -40,7 +40,7 @@ class CachedReferenceDocument(EmbeddedDocument):
     @param document: Optional document instance
     """
     if document is None:
-      document = self._referenced_doc.find(pk = self.id).one()
+      document = self._referenced_doc.get(pk = self.id)
     elif self.id is not None and document.pk != self.id:
       raise ValueError("Referenced document identifier mismatch!")
     elif self.version is not None and document._version < self.version:
@@ -66,7 +66,7 @@ class CachedReferenceDocument(EmbeddedDocument):
     Dereferences this cached reference and returns the complete version of
     this document.
     """
-    return self._referenced_doc.find(pk = self.id).one()
+    return self._referenced_doc.get(pk = self.id)
 
 def create_cached_reference_document(name, document, fields):
   """

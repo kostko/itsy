@@ -503,7 +503,7 @@ class Document(BaseDocument):
     # Should this document be made searchable
     searchable = True
   
-  def __init__(self, pk = None):
+  def __init__(self, **kwargs):
     """
     Class constructor.
     """
@@ -511,15 +511,19 @@ class Document(BaseDocument):
       raise ValueError("Unable to instantiate an abstract document '{0}'!".format(self.__class__.__name__))
     
     super(Document, self).__init__()
-    if pk is None:
-      return
 
-    document = self._meta.collection.find_one({ "_id" : self._meta.get_primary_key_field().to_store(pk, self) })
-    if document is None:
-      raise exceptions.DoesNotExist
-    
-    self._set_from_db(document)
-  
+    # Handle additional arguments to constructor the same way as one would set attributes
+    # on the document instance after it is instantiated
+    for key, value in kwargs.iteritems():
+      try:
+        self._meta.get_field_by_name(key)
+        setattr(self, key, value)
+      except KeyError:
+        raise KeyError("Field '%s' not found in document '%s'!" % (key, self.__class__.__name__))
+
+    # Initialize version to None, as this is a new document
+    self._version = None
+
   def __getstate__(self):
     """
     Returns state for serialization.
@@ -638,7 +642,7 @@ class Document(BaseDocument):
     if not self._values and self.pk is not None:
       return
 
-    is_update = self.pk is not None
+    is_update = self._version is not None
     document = self._db_prepare(update = is_update)
     if not document:
       return
@@ -649,7 +653,7 @@ class Document(BaseDocument):
 
       # An existing document is being updated, first create a snapshot and
       # acquire the document update mutex
-      old_document = self._snapshot(snapshot)
+      old_document = self._lock(snapshot)
       
       # Commit the document, incrementing version and releasing the update mutex
       document = { '$set' : document }
@@ -684,7 +688,7 @@ class Document(BaseDocument):
     self._document_source = DocumentSource.Db
     self._db_post_save()
   
-  def _snapshot(self, snapshot = True):
+  def _lock(self, snapshot = True):
     """
     Creates a snapshot of the current document and places it into a
     new revision. This operation will also acquire the editorial mutex
@@ -821,7 +825,7 @@ class Document(BaseDocument):
     pk = self._pk_for_db()
     
     # Acquire the editorial mutex before deleting this document
-    self._snapshot(False)
+    self._lock(False)
     self._meta.collection.remove(pk, safe = True)
     self._meta.revisions.remove({ "doc" : pk }, safe = True)
     if self._meta.searchable:
@@ -837,7 +841,14 @@ class Document(BaseDocument):
     Used to search the document collection.
     """
     return DbResultSet(cls, criteria)
-  
+
+  @classmethod
+  def get(cls, **criteria):
+    """
+    Retrieves a single document matching some criteria.
+    """
+    return cls.find(**criteria).one()
+
   @classmethod
   def get_or_create(cls, **criteria):
     """
@@ -846,8 +857,7 @@ class Document(BaseDocument):
     try:
       return cls.find(**criteria).one()
     except cls.DoesNotExist:
-      doc = cls()
-      doc._is_created = True
+      doc = cls(**criteria)
       return doc
   
   @classmethod
