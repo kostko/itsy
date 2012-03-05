@@ -285,6 +285,7 @@ class MetaDocument(type):
         pkey_field = db_fields.SerialField(primary_key = True)
         pkey_field.contribute_to_class(new_class, "pk")
       else:
+        setattr(new_class, "pk", pkey_field)
         _meta.add_field_alias(pkey_field, "pk")
 
     for name, obj in fields:
