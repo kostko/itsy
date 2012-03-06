@@ -155,6 +155,7 @@ class DocumentMetadata(FieldMetadata):
       self.index_fields = metadata.get('index_fields', [])
       self.classname = metadata['classname']
       self.searchable = metadata['searchable']
+      self.revisable = metadata['revisable']
     else:
       self.abstract = False
     
@@ -271,7 +272,8 @@ class MetaDocument(type):
     # Create the actual type
     new_class = type.__new__(meta, classname, bases, attrs)
     if not _meta.abstract:
-      new_class._meta.revisions.ensure_index([("doc", pymongo.ASCENDING)])
+      if _meta.revisable:
+        new_class._meta.revisions.ensure_index([("doc", pymongo.ASCENDING)])
       new_class._meta.collection.ensure_index([("_id", pymongo.ASCENDING), ("_version", pymongo.ASCENDING)])
     
     # Process document fields
@@ -512,6 +514,9 @@ class Document(BaseDocument):
     
     # Should this document be made searchable
     searchable = True
+
+    # Should this document have revisions
+    revisable = True
   
   def __init__(self, **kwargs):
     """
@@ -619,7 +624,7 @@ class Document(BaseDocument):
     else:
       _tasks.update(tasks)
       tasks = _tasks
-    
+
     if target == DocumentSource.Db:
       self._save_to_db(snapshot, tasks, author)
     elif target == DocumentSource.Search:
@@ -714,7 +719,7 @@ class Document(BaseDocument):
     if not document:
       raise exceptions.MutexNotAcquired
     
-    if snapshot:
+    if snapshot and self._meta.revisable:
       # Only copy revisable fields to our document revision
       snapshot = {}
       for name, field in self._meta.fields.iteritems():
@@ -761,6 +766,9 @@ class Document(BaseDocument):
     @param version: Version to revert to
     @param author: Author metadata
     """
+    if not self._meta.revisable:
+      return
+
     # TODO
     pass
 
@@ -833,7 +841,8 @@ class Document(BaseDocument):
     # Acquire the editorial mutex before deleting this document
     self._lock(False)
     self._meta.collection.remove(pk, safe = True)
-    self._meta.revisions.remove({ "doc" : pk }, safe = True)
+    if self._meta.revisable:
+      self._meta.revisions.remove({ "doc" : pk }, safe = True)
     if self._meta.searchable:
       common_tasks.search_index_remove.delay(self.__class__, self._pk_for_db(search = True))
     
