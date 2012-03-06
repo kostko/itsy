@@ -605,12 +605,17 @@ class Document(BaseDocument):
   def save(self, snapshot = True, tasks = None, author = None, target = DocumentSource.Db):
     """
     Saves the document, potentially creating a new revision.
-    
+
+    @param snapshot: True if a snapshot should be made (when the document is revisable)
+    @param tasks: None for default tasks, False for no tasks and dictionary for selective tasks
     @param author: Author metadata
+    @param target: Where to save the document (storage, search)
     """
     _tasks = copy.deepcopy(DOCUMENT_DEFAULT_TASKS)
     if tasks is None:
       tasks = _tasks
+    elif tasks is False:
+      tasks = {}
     else:
       _tasks.update(tasks)
       tasks = _tasks
