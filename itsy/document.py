@@ -665,13 +665,22 @@ class Document(BaseDocument):
       # An existing document is being updated, first create a snapshot and
       # acquire the document update mutex
       old_document = self._lock(snapshot)
-      
+
+      # Compute set and unset values (as null values just take up space)
+      d_set, d_unset = {}, {}
+      for key, value in document.items():
+        if value is None:
+          d_unset[key] = 1
+        else:
+          d_set[key] = value
+
       # Commit the document, incrementing version and releasing the update mutex
-      document = { '$set' : document }
-      document['$inc'] = { '_version' : 1 }
+      document = {'$set': d_set, '$unset': d_unset, '$inc': {'_version': 1}}
       document['$set']['_mutex'] = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
-      document['$set']['_last_update'] = datetime.datetime.utcnow()
-      document['$set']['_last_author'] = author
+      if self._meta.revisable:
+        document['$set']['_last_update'] = datetime.datetime.utcnow()
+        document['$set']['_last_author'] = author
+
       self._meta.collection.update(
         { "_id" : self._pk_for_db() },
         document,
@@ -685,8 +694,15 @@ class Document(BaseDocument):
       # A new document is being inserted
       document['_version'] = 1
       document['_mutex'] = datetime.datetime.utcnow() - datetime.timedelta(hours = 1)
-      document['_last_update'] = datetime.datetime.utcnow()
-      document['_last_author'] = author
+      if self._meta.revisable:
+        document['_last_update'] = datetime.datetime.utcnow()
+        document['_last_author'] = author
+
+      # Cleanup all null values as they just take up space
+      for key, value in document.items():
+        if value is None:
+          del document[key]
+
       new_pk = self._meta.collection.insert(document, safe = True)
       if new_pk is not None:
         self.pk = self._meta.get_primary_key_field().from_store(new_pk, self)
