@@ -353,12 +353,21 @@ class BaseDocument(object):
   ASCENDING = 1
   DESCENDING = -1
   
-  def __init__(self):
+  def __init__(self, **kwargs):
     """
     Class constructor.
     """
     self._values = {}
     self._reference_fields = {}
+
+    # Handle additional arguments to constructor the same way as one would set attributes
+    # on the document instance after it is instantiated
+    for key, value in kwargs.iteritems():
+      try:
+        self._meta.get_field_by_name(key)
+        setattr(self, key, value)
+      except KeyError:
+        raise KeyError("Field '%s' not found in document '%s'!" % (key, self.__class__.__name__))
   
   def __setattr__(self, name, value):
     """
@@ -511,16 +520,7 @@ class Document(BaseDocument):
     if self._meta.abstract:
       raise ValueError("Unable to instantiate an abstract document '{0}'!".format(self.__class__.__name__))
     
-    super(Document, self).__init__()
-
-    # Handle additional arguments to constructor the same way as one would set attributes
-    # on the document instance after it is instantiated
-    for key, value in kwargs.iteritems():
-      try:
-        self._meta.get_field_by_name(key)
-        setattr(self, key, value)
-      except KeyError:
-        raise KeyError("Field '%s' not found in document '%s'!" % (key, self.__class__.__name__))
+    super(Document, self).__init__(**kwargs)
 
     # Initialize version to None, as this is a new document
     self._version = None
