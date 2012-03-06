@@ -809,7 +809,7 @@ class Document(BaseDocument):
       self.refresh()
 
     document = self._search_prepare()
-    document['_id'] = document["pk"]
+    document['_id'] = document[self._meta.get_primary_key_field().name]
     document['_version'] = self._version
     document['_boost'] = float(self.get_search_boost())
 
