@@ -10,20 +10,35 @@ class ValidationError(Exception):
   pass
 
 class FieldSearchMapping(dict):
+  """
+  Dictionary with some additional metadata.
+  """
   def __init__(self, *args, **kwargs):
+    """
+    Class constructor.
+    """
     super(FieldSearchMapping, self).__init__(*args, **kwargs)
     self.analyzers = set()
 
   def __setitem__(self, key, value):
+    """
+    Sets a dictionary item.
+    """
     super(FieldSearchMapping, self).__setitem__(key, value)
     if isinstance(value, FieldSearchMapping):
       self.update_meta(value)
 
   def update(self, other):
+    """
+    Updates one dictionary from another.
+    """
     for key, value in other.items():
       self[key] = value
 
   def update_meta(self, other):
+    """
+    Updates just the metadata.
+    """
     self.analyzers.update(other.analyzers)
 
 class Field(object):
