@@ -208,7 +208,9 @@ class DocumentMetadata(FieldMetadata):
     """
     Prepares the field mappings for Elastic Search.
     """
-    mappings = {}
+    from .fields.base import FieldSearchMapping
+
+    mappings = FieldSearchMapping()
     for name, obj in self.fields.iteritems():
       if obj.searchable:
         mappings[name] = obj.get_search_mapping()
@@ -226,6 +228,17 @@ class DocumentMetadata(FieldMetadata):
     mapping.update({
       "_version" : dict(type = "integer", store = "no")
     })
+
+    # Setup index configuration
+    analyzers = {}
+    for a in mapping.analyzers:
+      analyzers[a.get_unique_id()] = a.serialize()
+
+    self.search_engine.set_configuration(dict(
+      analysis = dict(
+        analyzer = analyzers
+      )
+    ))
 
     # Send mappings to our search engine instance
     self.search_engine.set_mapping(dict(

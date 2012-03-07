@@ -60,6 +60,17 @@ class DocumentSearchIndex(object):
     self._es.create_index_if_missing(self._index)
     self._es.put_mapping(self._type, mapping, [self._index])
 
+  def set_configuration(self, config):
+    """
+    Sets up the index configuration.
+    """
+    self._es.create_index_if_missing(self._index)
+    try:
+      self._es.close_index(self._index)
+      self._es.update_settings(self._index, config)
+    finally:
+      self._es.open_index(self._index)
+
 class DocumentSearch(object):
   """
   A container for Elastic Search connections.

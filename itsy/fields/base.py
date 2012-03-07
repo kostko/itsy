@@ -9,6 +9,23 @@ from ..document import Document, EmbeddedDocument, RESTRICT, CASCADE
 class ValidationError(Exception):
   pass
 
+class FieldSearchMapping(dict):
+  def __init__(self, *args, **kwargs):
+    super(FieldSearchMapping, self).__init__(*args, **kwargs)
+    self.analyzers = set()
+
+  def __setitem__(self, key, value):
+    super(FieldSearchMapping, self).__setitem__(key, value)
+    if isinstance(value, FieldSearchMapping):
+      self.update_meta(value)
+
+  def update(self, other):
+    for key, value in other.items():
+      self[key] = value
+
+  def update_meta(self, other):
+    self.analyzers.update(other.analyzers)
+
 class Field(object):
   """
   Field descriptor (for more information on descriptors see the
@@ -190,7 +207,7 @@ class Field(object):
     This method may return a dictionary describing the mapping for
     Elastic Search.
     """
-    return dict(
+    return FieldSearchMapping(
       boost = self.search_index.get("boost", 1.0),
       store = "no",
     )
@@ -226,10 +243,9 @@ class TextField(Field):
     ))
 
     if self.search_index.get("analyzer", None) is not None:
-      mapping["analyzer"] = self.search_index["analyzer"]
-
-    if self.search_index.get("search_analyzer", None) is not None:
-      mapping["search_analyzer"] = self.search_index["search_analyzer"]
+      analyzer = self.search_index["analyzer"]
+      mapping["analyzer"] = analyzer.get_unique_id()
+      mapping.analyzers.add(analyzer)
 
     return mapping
 
