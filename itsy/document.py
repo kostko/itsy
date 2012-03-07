@@ -231,12 +231,18 @@ class DocumentMetadata(FieldMetadata):
 
     # Setup index configuration
     analyzers = {}
+    tokenizers = {}
+    filters = {}
     for a in mapping.analyzers:
       analyzers[a.get_unique_id()] = a.serialize()
+      tokenizers.update(a.get_tokenizers())
+      filters.update(a.get_filters())
 
     self.search_engine.set_configuration(dict(
       analysis = dict(
-        analyzer = analyzers
+        analyzer = analyzers,
+        tokenizer = tokenizers,
+        filter = filters
       )
     ))
 

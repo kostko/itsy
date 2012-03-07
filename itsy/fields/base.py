@@ -799,57 +799,6 @@ class SetField(ListField):
     """
     return list(set(super(SetField, self).to_search(value, document)))
 
-class SearchCompositeField(Field):
-  """
-  Field that enables composition of other fields into text strings for
-  purpuses of search persistance.
-  """
-  def __init__(self, composition, **kwargs):
-    """
-    Class constructor.
-    """
-    self.composition = composition
-    kwargs['virtual'] = True
-    kwargs['revisable'] = False
-    kwargs['searchable'] = True
-    super(SearchCompositeField, self).__init__(**kwargs)
-  
-  def from_search(self, value, document):
-    """
-    Converts value from Elastic Search store.
-    """
-    return value
-  
-  def __get__(self, obj, typ):
-    """
-    Override descriptor's get method to always return a precomposed value.
-    """
-    return self.composition.format(**{ 'self' : obj })
-  
-  def to_search(self, value, document):
-    """
-    Converts value to Elastic Search store.
-    """
-    return self.composition.format(**{ 'self' : document })
-
-  def get_search_mapping(self):
-    """
-    Returns field mapping for Elastic Search.
-    """
-    mapping = super(SearchCompositeField, self).get_search_mapping()
-    mapping.update(dict(
-      type = "string",
-      index = "analyzed" if self.search_index.get("analyzed", True) else "not_analyzed",
-    ))
-
-    if self.search_index.get("analyzer", None) is not None:
-      mapping["analyzer"] = self.search_index["analyzer"]
-
-    if self.search_index.get("search_analyzer", None) is not None:
-      mapping["search_analyzer"] = self.search_index["search_analyzer"]
-
-    return mapping
-
 class DictField(Field):
   """
   Similar to an embedded field but without type checks, allowing any
