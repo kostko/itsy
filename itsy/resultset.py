@@ -121,7 +121,7 @@ class DbResultSet(object):
     Orders the result set by a specific field or fields.
     """
     self.query = self.query.sort(self._parse_order_spec(fields))
-    return self 
+    return self
   
   def all(self):
     """
@@ -202,48 +202,133 @@ class SearchResultSet(object):
   """
   Wrapper for Elastic Search result sets.
   """
-  def __init__(self, document, query, offset = 0, limit = 35, min_score = None, highlight = None):
+  def __init__(self, document, query):
     """
     Class constructor.
     
     @param document: Document class
     @param query: A valid pyes.Query
-    @param offset: Optional offset in search results
-    @param limit: Optional limit in search results
-    @param min_score: Optional minimum score
-    @param highlight: Optional highlight information
     """
-    self.document = document
-    query = {
-      'query' : query.serialize()
-    }
-    
-    if min_score is not None:
-      query['min_score'] = min_score
+    self._document = document
+    self._query = query
+    self._offset = None
+    self._limit = None
+    self._min_score = None
+    self._order = None
+    self._highlight = None
+    self._evaluated = False
+    self._results = None
 
-    if highlight is not None:
-      query["highlight"] = highlight
+  def all(self):
+    """
+    Clones this result set.
+    """
+    rs = SearchResultSet(self._document, self._query)
+    rs._offset = self._offset
+    rs._limit = self._limit
+    rs._min_score = self._min_score
+    rs._highlight = self._highlight
+    rs._order = self._order
+    rs._evaluated = self._evaluated
+    rs._results = self._results
+    return rs
 
-    self._results = document._meta.search_engine.search(
-      query,
-      **{
-        'from'  : offset,
-        'size'  : limit
-      }
-    )
-  
+  def _evaluate(self):
+    """
+    Evaluates this result set if it hasn't yet been evaluated.
+    """
+    if not self._evaluated:
+      query = { 'query' : self._query.serialize() }
+      if self._min_score is not None:
+        query['min_score'] = self._min_score
+      if self._highlight is not None:
+        query['highlight'] = self._highlight
+      if self._order is not None:
+        query['sort'] = self._order
+
+      params = {}
+      if self._offset is not None:
+        params['from'] = int(self._offset)
+      if self._limit is not None:
+        params['limit'] = int(self._limit)
+
+      self._results = self._document._meta.search_engine.search(
+        query,
+        **params
+      )
+      self._evaluated = True
+
+    return self._results
+
+  def limit(self, limit):
+    """
+    Limits this result set to some amount of entries.
+
+    @param limit: Number of entries to limit to
+    """
+    self._evaluated = False
+    self._limit = limit
+    return self
+
+  def skip(self, skip):
+    """
+    Skips the first entries of this result set.
+
+    @param skip: Number of entries to skip
+    """
+    self._evaluated = False
+    self._offset = skip
+    return self
+
+  def min_score(self, score):
+    """
+    Sets up the minimum score for the documents to be included in the result
+    set.
+
+    @param score: Minimum score
+    """
+    self._evaluated = False
+    self._min_score = score
+    return self
+
+  def highlight(self, **highlight):
+    """
+    Sets up the highlight descriptor.
+    """
+    self._evaluated = False
+    self._highlight = highlight
+    return self
+
+  def order_by(self, *fields):
+    """
+    Orders the result set by a specific field or fields.
+    """
+    self._evaluated = False
+    if self._order is None:
+      self._order = []
+
+    for field in fields:
+      direction = "asc"
+      if field.startswith('-'):
+        direction = "desc"
+        field = field[1:]
+
+      self._order.append({ field : direction })
+
+    return self
+
   @property
   def total(self):
     """
     Returns the total number of hits.
     """
-    return self._results['hits']['total']
+    return self._evaluate()['hits']['total']
 
   def _to_document(self, hit):
     """
     Converts a search result into a document.
     """
-    obj = self.document()
+    obj = self._document()
     obj._set_from_search(hit['_source'], hit.get('highlight'))
     return obj
   
@@ -251,6 +336,6 @@ class SearchResultSet(object):
     """
     Iterates over the results.
     """
-    for hit in self._results['hits']['hits']:
+    for hit in self._evaluate()['hits']['hits']:
       yield self._to_document(hit)
 

@@ -905,13 +905,13 @@ class Document(BaseDocument):
       return doc
   
   @classmethod
-  def find_es(cls, query, **kwargs):
+  def find_es(cls, query):
     """
     Used to search via Elastic Search.
     
     @param query: pyes.Query instance
     """
-    return SearchResultSet(cls, query, **kwargs)
+    return SearchResultSet(cls, query)
   
   def sync_reference_field(self, path, document):
     """
