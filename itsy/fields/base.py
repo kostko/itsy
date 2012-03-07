@@ -172,7 +172,7 @@ class Field(object):
     """
     Converts value from Elastic Search.
     """
-    return None
+    return value
   
   def to_store(self, value, document):
     """
@@ -184,7 +184,7 @@ class Field(object):
     """
     Converts value to Elastic Search.
     """
-    return None
+    return value
   
   def to_revision(self, value, document):
     """
