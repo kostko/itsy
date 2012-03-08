@@ -250,7 +250,7 @@ class SearchResultSet(object):
       if self._offset is not None:
         params['from'] = int(self._offset)
       if self._limit is not None:
-        params['limit'] = int(self._limit)
+        params['size'] = int(self._limit)
 
       self._results = self._document._meta.search_engine.search(
         query,
