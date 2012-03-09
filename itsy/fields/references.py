@@ -4,7 +4,7 @@ import copy
 
 from . import base as fields_base
 from .. import references
-from ..document import Document, EmbeddedDocument, FieldMetadata, RESTRICT, CASCADE
+from ..document import Document, EmbeddedDocument, RESTRICT
 from .base import Field
 
 __all__ = [
