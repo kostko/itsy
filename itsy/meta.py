@@ -1,3 +1,5 @@
+import pymongo
+
 from django.core.exceptions import ImproperlyConfigured
 
 from .connection import store, search
@@ -127,8 +129,8 @@ class DocumentMetadata(FieldMetadata):
       self.collection_base = metadata.get('collection', None)
       self.index_fields = metadata.get('index_fields', [])
       self.classname = metadata['classname']
-      self.searchable = metadata['searchable']
-      self.revisable = metadata['revisable']
+      self.searchable = metadata.get('searchable', True)
+      self.revisable = metadata.get('revisable', True)
     else:
       self.abstract = False
 
@@ -143,6 +145,50 @@ class DocumentMetadata(FieldMetadata):
       self.collection = store.collection(self.collection_base)
       self.revisions = store.collection("{0}.revisions".format(self.collection_base))
       self.search_engine = search.index(self.collection_base, self.classname.lower())
+
+  def setup_indices(self):
+    """
+    Sets up the document indices.
+    """
+    if self.abstract or self.embedded:
+      return
+
+    # Handle some basic indices
+    if self.revisable:
+      self.revisions.ensure_index([("doc", pymongo.ASCENDING)])
+    self.collection.ensure_index([("_id", pymongo.ASCENDING), ("_version", pymongo.ASCENDING)])
+
+    # Handle per-field indices
+    for field in self.fields.values():
+      for ifield, order in field.get_indices().iteritems():
+        if ifield == '.':
+          self.collection.ensure_index([(field.db_name, order)])
+        else:
+          self.collection.ensure_index([('{0}.{1}'.format(field.db_name, ifield), order)])
+
+    # Process composite indices
+    for index_spec in self.index_fields:
+      db_index_spec = []
+      for field_path in index_spec:
+        if field_path[0] == '-':
+          order = -1
+          field_path = field_path[1:]
+        else:
+          order = 1
+
+        db_index_spec.append((".".join(self.resolve_subfield_hierarchy(field_path.split("."))), order))
+
+      self.collection.ensure_index(db_index_spec)
+
+  def setup_reverse_references(self):
+    """
+    Sets up the document's reverse references.
+    """
+    if self.abstract or self.embedded:
+      return
+
+    for field in self.fields.values():
+      field.setup_reverse_references(field.cls, field.name)
 
   def get_primary_key_field(self):
     """
@@ -165,17 +211,6 @@ class DocumentMetadata(FieldMetadata):
         raise ImproperlyConfigured("Primary key's db_name must be _id!")
 
       self.primary_key_field = field
-
-    if not self.embedded and not self.abstract:
-      # Process index for this field
-      for ifield, order in field.get_indices().iteritems():
-        if ifield == '.':
-          self.collection.ensure_index([(field.db_name, order)])
-        else:
-          self.collection.ensure_index([('{0}.{1}'.format(field.db_name, ifield), order)])
-
-      # Process reverse references
-      field.setup_reverse_references(field.cls, field.name)
 
   def search_mapping_prepare(self):
     """

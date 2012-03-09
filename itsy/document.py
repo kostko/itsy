@@ -26,116 +26,114 @@ class DocumentSource:
   Db = 1
   Search = 2
 
-class MetaDocument(type):
+def subclass_exception(name, parents, module):
+  """
+  A helper function that creates new instances of exceptions that can
+  be used together with models.
+  """
+  return type(name, parents, { "__module__" : module })
+
+class MetaDocumentMixin(object):
+  """
+  Mixin for common methods shared between normal and embedded documents.
+  """
+  def add_to_class(cls, name, value):
+    if hasattr(value, 'contribute_to_class'):
+      value.contribute_to_class(cls, name)
+    else:
+      setattr(cls, name, value)
+
+class MetaDocument(type, MetaDocumentMixin):
   """
   Meta class for generating document classes.
   """
-  def __new__(meta, classname, bases, attrs):
+  def __new__(cls, classname, bases, attrs):
     """
     Constructs a new document type.
     """
     if classname == "Document":
-      return type.__new__(meta, classname, bases, attrs)
-    
+      return type.__new__(cls, classname, bases, attrs)
+
+    # Create the actual class
+    module = attrs.pop("__module__")
+    new_class = type.__new__(cls, classname, bases, { "__module__" : module })
+
     # Inject exceptions
-    attrs['DoesNotExist'] = exceptions.DoesNotExist
-    attrs['MissingVersionMetadata'] = exceptions.MissingVersionMetadata
-    attrs['MutexNotAcquired'] = exceptions.MutexNotAcquired
+    new_class.add_to_class("DoesNotExist",
+      subclass_exception("DoesNotExist", (exceptions.DoesNotExist,), module))
+    new_class.add_to_class("MissingVersionMetadata",
+      subclass_exception("MissingVersionMetadata", (exceptions.MissingVersionMetadata,), module))
+    new_class.add_to_class("MutexNotAcquired",
+      subclass_exception("MutexNotAcquired", (exceptions.MutexNotAcquired,), module))
     
-    # Merge metadata dictionary copying defaults from Document class
-    m = { 'classname' : classname }
-    m.update(Document.Meta.__dict__)
-    m.update(attrs['Meta'].__dict__)
-    del attrs['Meta']
-    attrs['_meta'] = _meta = DocumentMetadata(metadata = m)
+    # Construct the document metadata object that holds all the important stuff
+    m = {}
+    attr_meta = attrs.pop('Meta', None)
+    if attr_meta is not None:
+      m.update(attr_meta.__dict__)
+
+    m['classname'] = classname
+    new_class.add_to_class("_meta", DocumentMetadata(metadata = m))
+    meta = new_class._meta
     
-    # Pre-process fields
-    from . import fields as db_fields
-    fields = []
-    for name, obj in attrs.items():
-      if isinstance(obj, db_fields.Field):
-        fields.append((name, obj))
-        del attrs[name]
-    
-    # Include fields from parent abstract classes (if any)
+    # Add all attributes to our document
+    for name, value in attrs.items():
+      new_class.add_to_class(name, value)
+
+    # Inherit all fields from parent classes
     for base in bases:
-      if issubclass(base, Document) and base != Document:
-        fields += copy.deepcopy(base._meta.fields.items())
-    
-    # Create the actual type
-    new_class = type.__new__(meta, classname, bases, attrs)
-    if not _meta.abstract:
-      if _meta.revisable:
-        new_class._meta.revisions.ensure_index([("doc", pymongo.ASCENDING)])
-      new_class._meta.collection.ensure_index([("_id", pymongo.ASCENDING), ("_version", pymongo.ASCENDING)])
-    
-    # Process document fields
-    for name, obj in fields:
-      obj.contribute_to_class(new_class, name)
+      if not hasattr(base, '_meta'):
+        continue
+
+      if base._meta.abstract:
+        for name, field in base._meta.fields.items():
+          new_class.add_to_class(name, copy.deepcopy(field))
 
     # Ensure that there is a primary key if none has been created
-    if not _meta.abstract and not _meta.embedded:
-      pkey_field = _meta.get_primary_key_field()
+    if not meta.abstract and not meta.embedded:
+      pkey_field = meta.get_primary_key_field()
       if pkey_field is None:
-        pkey_field = db_fields.SerialField(primary_key = True)
-        pkey_field.contribute_to_class(new_class, "pk")
+        from .fields import SerialField
+        pkey_field = SerialField(primary_key = True)
+        new_class.add_to_class("pk", pkey_field)
       else:
         setattr(new_class, "pk", pkey_field)
-        _meta.add_field_alias(pkey_field, "pk")
+        meta.add_field_alias(pkey_field, "pk")
 
-    for name, obj in fields:
-      obj.check_configuration()
+    # Check configuration on all fields
+    for field in meta.fields.values():
+      field.check_configuration()
 
-    # Process composite indices
-    if _meta.index_fields is not None and not _meta.abstract:
-      for index_spec in _meta.index_fields:
-        db_index_spec = []
-        for field_path in index_spec:
-          if field_path[0] == '-':
-            order = Document.DESCENDING
-            field_path = field_path[1:]
-          else:
-            order = Document.ASCENDING
-
-          db_index_spec.append((".".join(_meta.resolve_subfield_hierarchy(field_path.split("."))), order))
-
-        _meta.collection.ensure_index(db_index_spec)
+    meta.setup_indices()
+    meta.setup_reverse_references()
     
     signals.document_prepared.send(sender = new_class)
 
     # Register the class in the document registry
-    if not _meta.abstract:
+    if not meta.abstract:
       registry.document_registry.register(new_class)
 
     return new_class
 
-class MetaEmbeddedDocument(type):
+class MetaEmbeddedDocument(type, MetaDocumentMixin):
   """
   Meta class for generating embedded document classes.
   """
-  def __new__(meta, classname, bases, attrs):
+  def __new__(cls, classname, bases, attrs):
     """
     Constructs a new document type.
     """
     if classname == "EmbeddedDocument":
-      return type.__new__(meta, classname, bases, attrs)
-    
-    attrs['_meta'] = DocumentMetadata(embedded = True)
-    
-    # Pre-process fields
-    from . import fields as db_fields
-    fields = []
-    for name, obj in attrs.items():
-      if isinstance(obj, db_fields.Field):
-        fields.append((name, obj))
-        del attrs[name]
-    
-    # Create the actual type
-    new_class = type.__new__(meta, classname, bases, attrs)
-    
-    # Process document fields
-    for name, obj in fields:
-      obj.contribute_to_class(new_class, name)
+      return type.__new__(cls, classname, bases, attrs)
+
+    # Create the actual class
+    module = attrs.pop("__module__")
+    new_class = type.__new__(cls, classname, bases, { "__module__" : module })
+    new_class.add_to_class("_meta", DocumentMetadata(embedded = True))
+
+    # Add all attributes to our document
+    for name, value in attrs.items():
+      new_class.add_to_class(name, value)
     
     return new_class
 
@@ -193,7 +191,7 @@ class BaseDocument(object):
     values = state
     for name, value in values.iteritems():
       self._values[self._meta.fields.get(name)] = value
-  
+
   def _set_from_db(self, data):
     """
     Sets up this document by populating it with data obtained from
@@ -293,24 +291,7 @@ class Document(BaseDocument):
   definitions with a revision system.
   """
   __metaclass__ = MetaDocument
-  
-  # Default metadata
-  class Meta:
-    # MongoDB collection name containing the model
-    collection = None
-    
-    # Additional indexes to create
-    index_fields = None
-    
-    # Is this document an abstract one
-    abstract = False
-    
-    # Should this document be made searchable
-    searchable = True
 
-    # Should this document have revisions
-    revisable = True
-  
   def __init__(self, **kwargs):
     """
     Class constructor.

@@ -104,6 +104,9 @@ def create_cached_reference_document(name, document, fields):
   # Setup the referenced document class
   attrs['_referenced_doc'] = document
 
+  # Setup the module name
+  attrs['__module__'] = __name__
+
   new_cls = type("_CachedReference_%s" % name.capitalize(), (CachedReferenceDocument,), attrs)
   return new_cls
 
