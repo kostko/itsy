@@ -5,6 +5,7 @@ from ..search.analyzer import ExactTermAnalyzer
 
 __all__ = [
   "SearchCompositeField",
+  "SearchCopyField",
   "SearchExactField"
 ]
 
@@ -58,10 +59,9 @@ class SearchCompositeField(Field):
 
     return mapping
 
-class SearchExactField(Field):
+class SearchCopyField(Field):
   """
-  A virtual field that stores a copy of an existing field analyzed using
-  the ExactTermAnalyzer.
+  A virtual field that stores a copy of an existing (string) field.
   """
   def __init__(self, copy_from, **kwargs):
     """
@@ -71,7 +71,7 @@ class SearchExactField(Field):
     kwargs['virtual'] = True
     kwargs['revisable'] = False
     kwargs['searchable'] = True
-    super(SearchExactField, self).__init__(**kwargs)
+    super(SearchCopyField, self).__init__(**kwargs)
 
   def from_search(self, value, document):
     """
@@ -95,12 +95,31 @@ class SearchExactField(Field):
     """
     Returns field mapping for Elastic Search.
     """
-    mapping = super(SearchExactField, self).get_search_mapping()
-    analyzer = ExactTermAnalyzer()
-    mapping.analyzers.add(analyzer)
+    mapping = super(SearchCopyField, self).get_search_mapping()
     mapping.update(dict(
       type = "string",
-      index = "analyzed",
-      analyzer = analyzer.get_unique_id()
+      index = "analyzed" if self.search_index.get("analyzed", True) else "not_analyzed",
     ))
+
+    if self.search_index.get("analyzer", None) is not None:
+      analyzer = self.search_index["analyzer"]
+      mapping["analyzer"] = analyzer.get_unique_id()
+      mapping.analyzers.add(analyzer)
+
     return mapping
+
+class SearchExactField(SearchCopyField):
+  """
+  A virtual field that stores a copy of an existing (string) field analyzed using
+  the ExactTermAnalyzer.
+  """
+  def __init__(self, copy_from, **kwargs):
+    """
+    Class constructor.
+    """
+    search_index = dict(
+      analyzed = True,
+      analyzer = ExactTermAnalyzer()
+    )
+    search_index.update(kwargs.get('search_index', {}))
+    super(SearchExactField, self).__init__(copy_from, search_index = search_index, **kwargs)
