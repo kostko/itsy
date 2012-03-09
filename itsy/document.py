@@ -2,7 +2,6 @@ from __future__ import absolute_import
 
 import copy
 import datetime
-import pymongo
 
 from . import exceptions, signals, registry
 from . import tasks as common_tasks
