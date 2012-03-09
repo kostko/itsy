@@ -84,7 +84,7 @@ class FieldMetadata(object):
     """
     data[self.get_field_by_name(name).db_name] = value
 
-  def resolve_subfield_hierarchy(self, field_elements):
+  def resolve_subfield_hierarchy(self, field_elements, get_field = False):
     """
     Resolves Itsy field hierarchy into a database field hierarchy.
 
@@ -92,16 +92,25 @@ class FieldMetadata(object):
     @return: Ordered database field names
     """
     db_field = []
+    last_field = None
     subfields = self
     for element in field_elements:
       if subfields is not None:
-        field = subfields.get_field_by_name(element)
-        db_field.append(field.db_name)
+        orig_field = field = subfields.get_field_by_name(element)
+        if field.get_subfield() is not None:
+          field = field.get_subfield()
+
+        last_field = field
+        db_field.append(orig_field.db_name)
         subfields = field.get_subfield_metadata()
       else:
+        last_field = None
         db_field.append(element)
 
-    return db_field
+    if get_field:
+      return db_field, last_field
+    else:
+      return db_field
 
 class DocumentMetadata(FieldMetadata):
   """

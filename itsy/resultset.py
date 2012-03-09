@@ -32,38 +32,24 @@ class DbResultSet(object):
     """
     Parse and transform a query specification.
     """
-    from . import fields as db_fields
+    operators = ('ne', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'mod', 'all', 'size', 'exists', 'not')
     
     new_spec = {}
     for key, value in spec.iteritems():
       elements = key.split('__')
-      if len(elements) > 1:
-        # Process fields through embedded document hierarchy
-        rkey = []
-        subfields = self.document._meta
-        for element in elements[:-1]:
-          if subfields is not None:
-            field = subfields.get_field_by_name(element)
-            rkey.append(field.db_name)
-            subfields = field.get_subfield_metadata()
-          else:
-            rkey.append(element)
-        
-        # Discover a potential modifier
-        modifier = elements[-1]
-        rkey = ".".join(rkey)
-        
-        if modifier == 'all':
-          new_spec[rkey] = { "$all" : value }
-        elif modifier == 'in':
-          new_spec[rkey] = { "$in" : value }
-        else:
-          # Not a known modifier, treat as a normal field
-          if subfields is not None:
-            modifier = subfields.get_field_by_name(modifier).db_name
-          new_spec["{0}.{1}".format(rkey, modifier)] = value
-      else:
-        self.document._meta.field_to_data(key, value, new_spec)
+      op = None
+      if elements[-1] in operators:
+        op = elements.pop()
+
+      field_spec, last_field = self.document._meta.resolve_subfield_hierarchy(elements, get_field = True)
+      if last_field is not None:
+        # TODO value should be properly prepared
+        pass
+
+      if op is not None:
+        value = { "$%s" % op : value }
+
+      new_spec[".".join(field_spec)] = value
     
     return new_spec
 

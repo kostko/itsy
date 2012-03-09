@@ -217,6 +217,13 @@ class Field(object):
     """
     return None
 
+  def get_subfield(self):
+    """
+    If this field is actually a proxy for instances of some other field
+    type, this subfield should be returned here.
+    """
+    return None
+
   def get_search_mapping(self):
     """
     This method may return a dictionary describing the mapping for
@@ -715,7 +722,14 @@ class ListField(Field):
     """
     for element in value:
       self.subfield.validate(element, document)
-  
+
+  def get_subfield(self):
+    """
+    If this field is actually a proxy for instances of some other field
+    type, this subfield should be returned here.
+    """
+    return self.subfield
+
   def get_indices(self):
     """
     This method may return a dictionary of indices for this field. Keys
