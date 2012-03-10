@@ -183,11 +183,17 @@ class ReverseCachedReferenceDescriptor(Field):
     Returns field mapping for Elastic Search.
     """
     mapping = super(ReverseCachedReferenceDescriptor, self).get_search_mapping()
+    properties = {}
+    for name in self.searchable_fields:
+      field = self.dst_class._meta.resolve_subfield_hierarchy(name.split('.'), get_field = True)[1]
+      if field is not None:
+        properties[name.replace('.', '_')] = field.get_search_mapping()
+
     mapping.update(dict(
       type = "object",
-      # TODO Make this non-dynamic
       dynamic = True,
-      enabled = self.searchable
+      enabled = self.searchable,
+      properties = properties
     ))
     return mapping
 
