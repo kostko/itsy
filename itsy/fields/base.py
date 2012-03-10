@@ -777,13 +777,22 @@ class ListField(Field):
     """
     Converts value from Elastic Search store.
     """
-    return [self.subfield.from_search(e, document) for e in value]
+    return [self.subfield.from_search(e, document) for e in value if e is not None]
   
   def to_search(self, value, document):
     """
     Converts value to Elastic Search store.
     """
-    return [self.subfield.to_search(e, document) for e in value]
+    result = []
+    for e in value:
+      v = self.subfield.to_search(e, document)
+      # The returned value may be None when the subfield is an embedded document
+      # field and it is non-indexable; so we should not insert None values into
+      # the list.
+      if v is not None:
+        result.append(v)
+
+    return result
   
   def post_save(self, value, document):
     """

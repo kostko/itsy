@@ -252,8 +252,12 @@ class BaseDocument(object):
   
   def _search_prepare(self):
     """
-    Prepares the document for saving into the search index.
+    Prepares the document for saving into the search index. If this document
+    is marked as non-indexable, this method will return None.
     """
+    if not self.should_save_to_search_index():
+      return None
+
     document = {}
     
     for name, field in self._meta.fields.iteritems():
@@ -283,6 +287,16 @@ class BaseDocument(object):
       return self._parent.get_top_level_document()
     
     return self
+
+  def should_save_to_search_index(self):
+    """
+    This method may decide, on a per instance basis, whether this document
+    should be saved to the search index. By default, this method always
+    returns True and all (searchable) documents are also indexed.
+
+    @return: True to save, False to skip
+    """
+    return True
 
 class Document(BaseDocument):
   """
@@ -544,7 +558,7 @@ class Document(BaseDocument):
       # Dispatch task for syncing the cached references
       common_tasks.cache_spawn_syncers.delay(self.__class__, self.pk, modified_fields)
     
-    if tasks.get('search_indices', False) and self._meta.searchable:
+    if tasks.get('search_indices', False) and self._meta.searchable and self.should_save_to_search_index():
       # Dispatch task for updating search indices
       common_tasks.search_index_update.delay(self.__class__, self.pk)
   
@@ -575,7 +589,7 @@ class Document(BaseDocument):
     if self.pk is None:
       raise exceptions.DocumentNotSaved
     
-    if not self._meta.searchable:
+    if not self._meta.searchable or not self.should_save_to_search_index():
       return
     
     if self._document_source != DocumentSource.Db:
