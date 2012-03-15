@@ -7,8 +7,7 @@ from .search import DocumentSearch
 
 # Create a default document store connection
 store = DocumentStore(
-  settings.ITSY_MONGODB_HOST,
-  settings.ITSY_MONGODB_PORT,
+  settings.ITSY_MONGODB_SERVERS,
   settings.ITSY_MONGODB_DB
 )
 

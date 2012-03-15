@@ -37,15 +37,14 @@ class DocumentStore(object):
   """
   A container for MongoDB connections.
   """
-  def __init__(self, host, port, database):
+  def __init__(self, servers, database):
     """
     Class constructor.
     
-    @param host: Hostname of MongoDB server
-    @param port: Port of MongoDB server
+    @param servers: A list of servers
     @param database: Database name
     """
-    self._db = getattr(pymongo.Connection(host, port), database)
+    self._db = getattr(pymongo.Connection(servers), database)
 
   def collection(self, name, **kwargs):
     """
