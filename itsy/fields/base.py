@@ -13,6 +13,7 @@ __all__ = [
   
   # Fields
   "TextField",
+  "ObjectIdField",
   "IntegerField",
   "FloatField",
   "BooleanField",
@@ -202,6 +203,12 @@ class Field(object):
     Converts value to MongoDB store.
     """
     return value
+
+  def to_query(self, value):
+    """
+    Converts value to MongoDB store for DBResultSet.
+    """
+    return value
   
   def to_search(self, value, document):
     """
@@ -291,6 +298,34 @@ class TextField(Field):
       analyzer = self.search_index["analyzer"]
       mapping["analyzer"] = analyzer.get_unique_id()
       mapping.analyzers.add(analyzer)
+
+    return mapping
+
+class ObjectIdField(Field):
+  """
+  Field for storing ObjectId. It is mapped to str.
+  """
+  def __init__(self, **kwargs):
+    super(ObjectIdField, self).__init__(**kwargs)
+
+  def from_store(self, value, document):
+    return str(value)
+
+  def to_query(self, value):
+    from pymongo.objectid import ObjectId
+    return ObjectId(value)
+
+  def to_store(self, value, document):
+    return self.to_query(value)
+
+  def get_search_mapping(self):
+    """
+    Returns field mapping for Elastic Search.
+    """
+    mapping = super(ObjectId, self).get_search_mapping()
+    mapping.update(dict(
+      type = "string",
+    ))
 
     return mapping
 

@@ -44,7 +44,9 @@ class DbResultSet(object):
       field_spec, last_field = self.document._meta.resolve_subfield_hierarchy(elements, get_field = True)
       if last_field is not None:
         # TODO value should be properly prepared
-        pass
+        value = last_field.to_query(value)
+
+      # TODO 
 
       if op is not None:
         value = { "$%s" % op : value }
