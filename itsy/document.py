@@ -227,6 +227,10 @@ class BaseDocument(object):
     document = {}
     
     for name, field in self._meta.fields.iteritems():
+      # Skip other names of primary key
+      if name != 'pk' and self._meta.fields.get('pk') is field:
+        continue
+
       # Skip fields that are not meant to be saved into the database; they might
       # be virtual or only be meant for search indices
       if field.virtual:
