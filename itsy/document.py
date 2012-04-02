@@ -92,8 +92,8 @@ class MetaDocument(type, MetaDocumentMixin):
     if not meta.abstract and not meta.embedded:
       pkey_field = meta.get_primary_key_field()
       if pkey_field is None:
-        from .fields import SerialField
-        pkey_field = SerialField(primary_key = True)
+        from .fields import ObjectIdField
+        pkey_field = ObjectIdField(primary_key = True)
         new_class.add_to_class("pk", pkey_field)
       else:
         setattr(new_class, "pk", pkey_field)
