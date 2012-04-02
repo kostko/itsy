@@ -95,7 +95,7 @@ class MetaDocument(type, MetaDocumentMixin):
         from .fields import ObjectIdField
         pkey_field = ObjectIdField(primary_key = True)
         new_class.add_to_class("pk", pkey_field)
-      else:
+      elif pkey_field.name != "pk":
         setattr(new_class, "pk", pkey_field)
         meta.add_field_alias(pkey_field, "pk")
 
