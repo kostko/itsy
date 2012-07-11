@@ -570,7 +570,7 @@ class EnumField(TextField):
   Field that may contain one of the many predefined values.
   """
   # A list of all EnumTypes in the application, used for compiling a javascript catalog.
-  enum_types_list = set()
+  enum_types_list = dict()
 
   def __init__(self, choices, enum_type = None, **kwargs):
     """
@@ -609,7 +609,7 @@ class EnumField(TextField):
     else:
       enum_type = self.enum_type
     setattr(self.cls, enum_type, EnumType)
-    EnumField.enum_types_list.add('{0}.{1}.{2}'.format(str(self.cls.__module__), self.cls.__name__, enum_type))
+    EnumField.enum_types_list['{0}.{1}.{2}'.format(str(self.cls.__module__), self.cls.__name__, enum_type)] = EnumType.localized_choices
   
   def validate(self, value, document):
     """
