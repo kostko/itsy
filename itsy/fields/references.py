@@ -5,7 +5,7 @@ import copy
 from . import base as fields_base
 from .. import references
 from ..document import Document, EmbeddedDocument, RESTRICT
-from .base import Field
+from .base import Field, FieldSearchMapping
 
 __all__ = [
   "CachedReferenceField",
@@ -183,7 +183,7 @@ class ReverseCachedReferenceDescriptor(Field):
     Returns field mapping for Elastic Search.
     """
     mapping = super(ReverseCachedReferenceDescriptor, self).get_search_mapping()
-    properties = {}
+    properties = FieldSearchMapping()
     for name in self.searchable_fields:
       field = self.dst_class._meta.resolve_subfield_hierarchy(name.split('.'), get_field = True)[1]
       if field is not None:
