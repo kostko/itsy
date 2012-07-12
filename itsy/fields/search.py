@@ -122,4 +122,5 @@ class SearchExactField(SearchCopyField):
       analyzer = ExactTermAnalyzer()
     )
     search_index.update(kwargs.get('search_index', {}))
-    super(SearchExactField, self).__init__(copy_from, search_index = search_index, **kwargs)
+    kwargs['search_index'] = search_index
+    super(SearchExactField, self).__init__(copy_from, **kwargs)
