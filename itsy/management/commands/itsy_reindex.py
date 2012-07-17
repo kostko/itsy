@@ -57,6 +57,8 @@ class Command(management_base.BaseCommand):
       for no, document in enumerate(document_class.find().order_by("pk")):
         try:
           document.save(target = itsy_document.DocumentSource.Search)
+        except KeyboardInterrupt:
+          raise
         except:
           # Print the exception and continue reindexing
           traceback.print_exc()
