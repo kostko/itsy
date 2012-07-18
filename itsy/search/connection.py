@@ -59,18 +59,29 @@ class DocumentSearchIndex(object):
     """
     return self._es.optimize(indices = [self._index])
 
-  def set_mapping(self, mapping):
+  def set_mapping(self, mapping, create = False):
     """
     Sets up the field type mapping for this index.
+
+    :param create: Should the index be created if missing
     """
-    self._es.create_index_if_missing(self._index)
+    if create:
+      self._es.create_index_if_missing(self._index)
     self._es.put_mapping(self._type, mapping, [self._index])
 
-  def set_configuration(self, config):
+  def set_configuration(self, config, create = False):
     """
     Sets up the index configuration.
+
+    :param create: Should the index be created if missing
     """
-    self._es.create_index_if_missing(self._index)
+    if create:
+      self._es.create_index_if_missing(self._index, settings = config)
+
+    # Some items can only be configured on index creation and will cause an
+    # error when attempting to dynamically "change" them
+    config.get("index", {}).pop("number_of_shards", None)
+
     try:
       self._es.close_index(self._index)
       self._es.update_settings(self._index, config)

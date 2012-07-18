@@ -1,5 +1,6 @@
 import pymongo
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from .connection import store, search
@@ -255,16 +256,21 @@ class DocumentMetadata(FieldMetadata):
       tokenizers.update(a.get_tokenizers())
       filters.update(a.get_filters())
 
+    # Get default configuration options
+    default_config = getattr(settings, "ITSY_ELASTICSEARCH_DEFAULT_CONFIG", {})
+
     self.search_engine.set_configuration(dict(
       analysis = dict(
         analyzer = analyzers,
         tokenizer = tokenizers,
         filter = filters
-      )
-    ))
+      ),
+      index = default_config.get("index", {})
+    ), create = True)
 
     # Send mappings to our search engine instance
     self.search_engine.set_mapping(dict(
       dynamic = "strict",
       properties = mapping
     ))
+
