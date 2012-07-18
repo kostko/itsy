@@ -61,9 +61,11 @@ class Command(management_base.BaseCommand):
       document_class._meta.search_engine.set_configuration({
         "index" : { "refresh_interval" : "-1" } })
 
+      # Setup the primary key offset
+      last_pk = int(options.get("start-pk", "0"))
+
       try:
         num_indexed = 0
-        last_pk = int(options.get("start-pk", "0"))
         batch_size = 10000
         while True:
           # Assume that primary keys are monotonically incrementing
@@ -86,8 +88,9 @@ class Command(management_base.BaseCommand):
 
           if old_last_pk == last_pk:
             self.stdout.write("Index finished at pk=%s.\n" % last_pk)
+            break
       except KeyboardInterrupt:
-        pass
+        self.stdout.write("Index aborted at pk=%s.\n" % last_pk)
       finally:
         # Restore index configuration after indexing
         document_class._meta.search_engine.set_configuration({
