@@ -53,17 +53,31 @@ class Command(management_base.BaseCommand):
       self.stdout.write("Reindex of %s has been initiated in the background.\n" % class_path)
     else:
       self.stdout.write("Performing foreground reindex of %s...\n" % class_path)
+      
+      # Modify configuration for bulk indexing (disable index refresh)
+      document_class._meta.search_engine.set_configuration({
+        "index" : { "refresh_interval" : "-1" } })
 
-      for no, document in enumerate(document_class.find().order_by("pk")):
-        try:
-          document.save(target = itsy_document.DocumentSource.Search)
-        except KeyboardInterrupt:
-          raise
-        except:
-          # Print the exception and continue reindexing
-          traceback.print_exc()
+      try:
+        for no, document in enumerate(document_class.find().order_by("pk")):
+          try:
+            document.save(target = itsy_document.DocumentSource.Search)
+          except KeyboardInterrupt:
+            self.stdout.write("ERROR: Aborted by user.\n")
+            break
+          except:
+            # Print the exception and continue reindexing
+            traceback.print_exc()
 
-        if (no + 1) % 100 == 0:
-          self.stdout.write("Indexed %d documents.\n" % (no + 1))
+          if (no + 1) % 100 == 0:
+            self.stdout.write("Indexed %d documents.\n" % (no + 1))
+      finally:
+        # Restore index configuration after indexing
+        document_class._meta.search_engine.set_configuration({
+          "index" : { "refresh_interval" : "1s" } })
+
+        # Perform index optimization
+        self.stdout.write("Optimizing index...\n")
+        document_class._meta.search_engine.optimize()
 
       self.stdout.write("Reindex done.\n")
