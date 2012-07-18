@@ -16,7 +16,10 @@ class Command(management_base.BaseCommand):
       help = "Should the reindexing be performed by background workers."),
 
     optparse.make_option('--recreate-index', action = 'store_true', dest = 'recreate-index', default = False,
-      help = "Should the index be dropped and recreated. THIS WILL ERASE ALL DATA!")
+      help = "Should the index be dropped and recreated. THIS WILL ERASE ALL DATA!"),
+
+    optparse.make_option('--start-pk', dest = 'start-pk', default = "0",
+      help = "Start with the specified primary key instead of the first one.")
   )
 
   def handle(self, *args, **options):
@@ -59,18 +62,32 @@ class Command(management_base.BaseCommand):
         "index" : { "refresh_interval" : "-1" } })
 
       try:
-        for no, document in enumerate(document_class.find().order_by("pk")):
-          try:
-            document.save(target = itsy_document.DocumentSource.Search)
-          except KeyboardInterrupt:
-            self.stdout.write("ERROR: Aborted by user.\n")
-            break
-          except:
-            # Print the exception and continue reindexing
-            traceback.print_exc()
+        num_indexed = 0
+        last_pk = int(options.get("start-pk", "0"))
+        batch_size = 10000
+        while True:
+          # Assume that primary keys are monotonically incrementing
+          self.stdout.write("Starting batch %d at pk=%s.\n" % (num_indexed // batch_size + 1, last_pk))
+          old_last_pk = last_pk
+          for document in document_class.find(pk__gt = last_pk).order_by("pk").limit(batch_size):
+            try:
+              document.save(target = itsy_document.DocumentSource.Search)
+            except KeyboardInterrupt:
+              self.stdout.write("ERROR: Aborted by user.\n")
+              raise
+            except:
+              # Print the exception and continue reindexing
+              traceback.print_exc()
 
-          if (no + 1) % 100 == 0:
-            self.stdout.write("Indexed %d documents.\n" % (no + 1))
+            last_pk = document.pk
+            num_indexed += 1
+            if num_indexed % 100 == 0:
+              self.stdout.write("Indexed %d documents.\n" % num_indexed)
+
+          if old_last_pk == last_pk:
+            self.stdout.write("Index finished at pk=%s.\n" % last_pk)
+      except KeyboardInterrupt:
+        pass
       finally:
         # Restore index configuration after indexing
         document_class._meta.search_engine.set_configuration({
