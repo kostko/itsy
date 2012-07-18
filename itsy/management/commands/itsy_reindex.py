@@ -63,7 +63,7 @@ class Command(management_base.BaseCommand):
           # Print the exception and continue reindexing
           traceback.print_exc()
 
-        if (no + 1) % 1000 == 0:
+        if (no + 1) % 100 == 0:
           self.stdout.write("Indexed %d documents.\n" % (no + 1))
 
       self.stdout.write("Reindex done.\n")
