@@ -53,11 +53,11 @@ class DocumentSearchIndex(object):
       **kwargs
     )
 
-  def optimize(self):
+  def optimize(self, **kwargs):
     """
     Optimizes the search index.
     """
-    return self._es.optimize(indices = [self._index])
+    return self._es.optimize(indices = [self._index], **kwargs)
 
   def set_mapping(self, mapping, create = False):
     """

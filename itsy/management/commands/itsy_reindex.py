@@ -98,6 +98,6 @@ class Command(management_base.BaseCommand):
 
         # Perform index optimization
         self.stdout.write("Optimizing index...\n")
-        document_class._meta.search_engine.optimize()
+        document_class._meta.search_engine.optimize(max_num_segments = 1)
 
       self.stdout.write("Reindex done.\n")
