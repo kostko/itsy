@@ -206,6 +206,7 @@ class SearchResultSet(object):
     self._highlight = None
     self._evaluated = False
     self._results = None
+    self._only_fields = set()
 
   def all(self):
     """
@@ -219,6 +220,7 @@ class SearchResultSet(object):
     rs._order = self._order
     rs._evaluated = self._evaluated
     rs._results = self._results
+    rs._only_fields = self._only_fields
     return rs
 
   def _evaluate(self):
@@ -239,6 +241,8 @@ class SearchResultSet(object):
         params['from'] = int(self._offset)
       if self._limit is not None:
         params['size'] = int(self._limit)
+      if self._only_fields:
+        params['fields'] = ",".join(self._only_fields)
 
       self._results = self._document._meta.search_engine.search(
         query,
@@ -266,6 +270,15 @@ class SearchResultSet(object):
     """
     self._evaluated = False
     self._offset = skip
+    return self
+
+  def only(self, *fields):
+    """
+    Selects a subset of fields to be fetched.
+    """
+    for field in fields:
+      self._only_fields.add(field)
+
     return self
 
   def min_score(self, score):
@@ -317,7 +330,10 @@ class SearchResultSet(object):
     Converts a search result into a document.
     """
     obj = self._document()
-    obj._set_from_search(hit['_source'], hit.get('highlight'))
+    if '_source' in hit:
+      obj._set_from_search(hit['_source'], hit.get('highlight'))
+    else:
+      obj._set_from_search(hit['fields'], hit.get('highlight'))
     return obj
   
   def __iter__(self):
