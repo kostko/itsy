@@ -333,6 +333,7 @@ class SearchResultSet(object):
     if '_source' in hit:
       obj._set_from_search(hit['_source'], hit.get('highlight'))
     else:
+      hit['fields'][self._document._meta.get_primary_key_field().name] = hit['_id']
       obj._set_from_search(hit['fields'], hit.get('highlight'))
     return obj
   
