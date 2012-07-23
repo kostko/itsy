@@ -596,20 +596,23 @@ class EnumField(TextField):
     already known.
     """
     class EnumType:
-      localized_choices = []
+      localized_choices = {}
     
     for key, value in self.choices.iteritems():
       setattr(EnumType, value, key)
-    
-    for key, value in self.localized.iteritems():
-      EnumType.localized_choices.append((key, value))
-    
+
     if self.enum_type is None:
       enum_type = self.name.capitalize()
     else:
       enum_type = self.enum_type
+
+    # Insert the enumeration class into the document class for easy access
     setattr(self.cls, enum_type, EnumType)
-    EnumField.enum_types_list['{0}.{1}.{2}'.format(str(self.cls.__module__), self.cls.__name__, enum_type)] = EnumType.localized_choices
+
+    # Update localized choices and record it in the global enum list
+    EnumType.localized_choices.update(self.localized)
+    EnumField.enum_types_list['{0}.{1}.{2}'.format(str(self.cls.__module__), self.cls.__name__, enum_type)] = \
+      EnumType.localized_choices
   
   def validate(self, value, document):
     """
