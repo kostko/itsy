@@ -68,6 +68,13 @@ class CachedReferenceDocument(EmbeddedDocument):
     """
     return self._referenced_doc.get(pk = self.id)
 
+  def get_document(self):
+    """
+    Returns the document class that is referenced. For getting the actual instance,
+    you have to use `follow` instead.
+    """
+    return self._referenced_doc
+
 def create_cached_reference_document(name, document, fields):
   """
   Creates a new specialized cached reference (embedded) document with some
