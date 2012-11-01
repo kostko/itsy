@@ -480,7 +480,7 @@ class Document(BaseDocument):
       self._version += 1
       
       # Dispatch update tasks
-      self.dispatch_update_tasks(tasks, self._modified_fields(old_document, document['$set']))
+      self.dispatch_update_tasks(self.pk, tasks, self._modified_fields(old_document, document['$set']))
     else:
       # A new document is being inserted
       document['_version'] = 1
@@ -501,7 +501,7 @@ class Document(BaseDocument):
     
       # Dispatch update tasks
       tasks.update({ 'reference_cache' : False })
-      self.dispatch_update_tasks(tasks, [])
+      self.dispatch_update_tasks(self.pk, tasks, [])
     
     self._document_source = DocumentSource.Db
     self._db_post_save()
@@ -550,21 +550,23 @@ class Document(BaseDocument):
     
     return document
   
-  def dispatch_update_tasks(self, tasks, modified_fields):
+  @classmethod
+  def dispatch_update_tasks(cls, pk, tasks, modified_fields):
     """
     Dispatches tasks that will update external documents and search indices in
     the background.
     
+    @param pk: Document primary key
     @param tasks: Which tasks should be invoked
     @param modified_fields: Fields that have been modified
     """
     if tasks.get('reference_cache', False):
       # Dispatch task for syncing the cached references
-      common_tasks.cache_spawn_syncers.delay(self.__class__, self.pk, modified_fields)
+      common_tasks.cache_spawn_syncers.delay(cls, pk, modified_fields)
     
-    if tasks.get('search_indices', False) and self._meta.searchable and self.should_save_to_search_index():
+    if tasks.get('search_indices', False) and cls._meta.searchable:
       # Dispatch task for updating search indices
-      common_tasks.search_index_update.delay(self.__class__, self.pk)
+      common_tasks.search_index_update.delay(cls, pk)
   
   def revert(self, version, author = None):
     """
